@@ -1,0 +1,15 @@
+node_modules
+dist
+.npm-cache
+samples/shot-*.png
+*.log
+.DS_Store
+samples/bench.epub
+samples/browser-demo.epub
+samples/cover-preview.jpg
+samples/big-gbk.txt
+samples/debug-*.mjs
+samples/*.epub
+samples/*.jpg
+samples/*.webp
+samples/debug-*.png

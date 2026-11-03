@@ -1,0 +1,19 @@
+{
+  "name": "txt2book — TXT 转 EPUB",
+  "short_name": "txt2book",
+  "description": "纯浏览器本地运行的 TXT 转 EPUB 工具，文件不出设备。",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4efe4",
+  "theme_color": "#f4efe4",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "txt2book",
+  "private": true,
+  "version": "0.5.0",
+  "type": "module",
+  "description": "纯前端 TXT 转 EPUB 工具，文件不出浏览器",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
+    "validate": "node scripts/validate-epub.mjs samples/demo.epub"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "fast-xml-parser": "^5.11.2",
+    "iconv-lite": "^0.7.3",
+    "puppeteer-core": "^25.16.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  }
+}
