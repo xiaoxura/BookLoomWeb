@@ -118,6 +118,7 @@ describe('buildEpub', () => {
   });
 
   it('可以输出 EPUB 2 兼容格式', () => {
+    fs.mkdirSync('samples', { recursive: true });
     const output = buildEpub({
       chapters: sampleChapters(),
       meta: { title: '雾港灯塔', author: '林间', language: 'zh-CN' },

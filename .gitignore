@@ -13,3 +13,4 @@ samples/*.epub
 samples/*.jpg
 samples/*.webp
 samples/debug-*.png
+.ci-check
