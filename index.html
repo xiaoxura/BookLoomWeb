@@ -9,6 +9,14 @@
       content="纯浏览器本地运行的 TXT 转 EPUB 工具：自动识别编码与章节、人工校对、封面生成、排版调节。文件不会上传到任何服务器。"
     />
     <meta name="theme-color" content="#f4efe4" />
+    <script>
+      try {
+        const saved = localStorage.getItem('txt2book.theme');
+        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+      } catch {
+        /* 本地存储不可用时跟随系统 */
+      }
+    </script>
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:title" content="txt2book — 把 TXT 变成好读的 EPUB" />
@@ -45,7 +53,35 @@
           <span>TXT → EPUB</span>
         </div>
       </div>
-      <div class="tag">🔒 纯本地处理，文件不出浏览器</div>
+      <div class="top-actions">
+        <button
+          id="theme-toggle"
+          class="icon-button"
+          type="button"
+          aria-label="主题：跟随系统"
+          title="主题：跟随系统"
+        >
+          <span id="theme-icon" aria-hidden="true">◐</span>
+        </button>
+        <a
+          id="github-link"
+          class="icon-button"
+          href="https://github.com/xiaoxura/txt2book"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="在 GitHub 查看源码（MIT 开源）"
+          title="GitHub · MIT 开源"
+        >
+          <svg viewBox="0 0 16 16" width="19" height="19" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+            />
+          </svg>
+        </a>
+        <div class="tag">🔒 纯本地处理，文件不出浏览器</div>
+      </div>
+      <div id="app-progress" class="app-progress" hidden aria-hidden="true"></div>
     </header>
 
     <main>
@@ -60,6 +96,12 @@
             <button id="load-sample" class="ghost" type="button">试试示例</button>
           </div>
           <p class="fine">不上传、不联网，断网也能用</p>
+          <div id="drop-loading" class="drop-loading" hidden role="status" aria-live="polite">
+            <span class="spinner" aria-hidden="true"></span>
+            <h2>正在解析…</h2>
+            <p id="drop-loading-phase" class="drop-sub">正在读取文件，请稍候</p>
+            <p class="fine">大文件需要几秒，文件始终留在这台设备上</p>
+          </div>
         </div>
       </section>
 
@@ -114,8 +156,14 @@
         </div>
       </section>
 
-      <section id="workspace" class="workspace" hidden>
-        <aside class="panel chapters-panel">
+      <section id="workspace" class="workspace" hidden data-mobile-view="chapters">
+        <nav id="mobile-tabs" class="mobile-tabs" aria-label="工作区视图">
+          <button type="button" data-view="chapters" aria-pressed="true">目录</button>
+          <button type="button" data-view="preview" aria-pressed="false">预览</button>
+          <button type="button" data-view="settings" aria-pressed="false">设置与导出</button>
+        </nav>
+
+        <aside id="chapters-panel" class="panel chapters-panel">
           <div class="panel-head">
             <div>
               <h2>章节</h2>
@@ -145,7 +193,7 @@
           <div id="chapter-list" class="chapter-list" role="list"></div>
         </aside>
 
-        <section class="panel preview-panel">
+        <section id="preview-panel" class="panel preview-panel">
           <div class="panel-head">
             <h2>预览</h2>
             <span id="preview-meta" class="muted"></span>
@@ -158,114 +206,135 @@
               <button type="button" data-act="cancel" class="small ghost">取消</button>
             </div>
           </div>
-          <div class="preview-scroll">
+          <div id="preview-scroll" class="preview-scroll">
             <div id="preview" class="preview"></div>
+          </div>
+          <div class="preview-nav">
+            <button id="prev-chapter" class="ghost small" type="button" disabled>← 上一章</button>
+            <span id="chapter-position" class="muted">—</span>
+            <button id="next-chapter" class="ghost small" type="button" disabled>下一章 →</button>
           </div>
         </section>
 
-        <aside class="panel settings-panel">
+        <aside id="settings-panel" class="panel settings-panel">
           <div class="panel-head">
             <h2>设置</h2>
           </div>
 
-          <div class="group">
-            <h3>书籍信息</h3>
-            <label class="field">
-              <span>书名</span>
-              <input id="meta-title" type="text" placeholder="未命名" />
-            </label>
-            <label class="field">
-              <span>作者</span>
-              <input id="meta-author" type="text" placeholder="佚名" />
-            </label>
-            <div class="cover-row">
-              <div id="cover-thumb" class="cover-thumb"><span>无封面</span></div>
-              <div class="cover-actions">
-                <button id="cover-upload" class="ghost small" type="button">上传封面</button>
-                <button id="cover-auto" class="ghost small" type="button">自动生成</button>
-                <input id="cover-input" type="file" accept="image/*" hidden />
+          <div class="settings-scroll">
+            <div class="group">
+              <h3>书籍信息</h3>
+              <label class="field">
+                <span>书名</span>
+                <input id="meta-title" type="text" placeholder="未命名" />
+              </label>
+              <label class="field">
+                <span>作者</span>
+                <input id="meta-author" type="text" placeholder="佚名" />
+              </label>
+              <div class="cover-row">
+                <button
+                  id="cover-thumb"
+                  class="cover-thumb"
+                  type="button"
+                  title="点击上传封面"
+                  aria-label="上传封面"
+                >
+                  <span>无封面</span>
+                </button>
+                <div class="cover-actions">
+                  <button id="cover-upload" class="ghost small" type="button">上传封面</button>
+                  <button id="cover-auto" class="ghost small" type="button">自动生成</button>
+                  <button id="cover-remove" class="ghost small" type="button" hidden>移除封面</button>
+                  <input id="cover-input" type="file" accept="image/*" hidden />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="group">
-            <h3>文本处理</h3>
-            <label class="field">
-              <span>编码</span>
-              <select id="encoding">
-                <option value="auto">自动检测</option>
-                <option value="utf-8">UTF-8</option>
-                <option value="gb18030">GB18030 / GBK</option>
-                <option value="big5">Big5</option>
-                <option value="utf-16le">UTF-16 LE</option>
-                <option value="utf-16be">UTF-16 BE</option>
-              </select>
-            </label>
-            <label class="check">
-              <input id="filter-ads" type="checkbox" checked />
-              过滤广告 / 水印行
-            </label>
-            <button id="reparse" class="ghost small" type="button">重新识别</button>
-          </div>
+            <div class="group">
+              <h3>文本处理</h3>
+              <label class="field">
+                <span>编码</span>
+                <select id="encoding">
+                  <option value="auto">自动检测</option>
+                  <option value="utf-8">UTF-8</option>
+                  <option value="gb18030">GB18030 / GBK</option>
+                  <option value="big5">Big5</option>
+                  <option value="utf-16le">UTF-16 LE</option>
+                  <option value="utf-16be">UTF-16 BE</option>
+                </select>
+              </label>
+              <label class="check">
+                <input id="filter-ads" type="checkbox" checked />
+                过滤广告 / 水印行
+              </label>
+              <button id="reparse" class="ghost small" type="button">重新识别</button>
+            </div>
 
-          <div class="group">
-            <h3>识别规则</h3>
-            <label class="field">
-              <span>站点</span>
-              <select id="rule-preset">
-                <option value="auto">自动识别（推荐）</option>
-                <option value="ixdzs">爱下电子书</option>
-                <option value="biquge">笔趣阁系</option>
-                <option value="numbered">数字标题（1. 标题）</option>
-                <option value="english">英文 Chapter</option>
-                <option value="custom">自定义…</option>
-              </select>
-            </label>
-            <details id="rule-details" class="rules">
-              <summary>自定义规则（JSON）</summary>
-              <textarea id="rule-json" spellcheck="false" rows="5" placeholder='{"name":"我的规则","chapter":"^第\\d+章.*$","drop":["广告"]}'></textarea>
-              <div class="rule-actions">
-                <button id="rule-apply" class="ghost small" type="button">应用</button>
-                <button id="rule-export" class="ghost small" type="button">导出</button>
-                <button id="rule-import" class="ghost small" type="button">导入</button>
-                <input id="rule-file" type="file" accept="application/json,.json" hidden />
+            <details id="group-rules" class="group fold">
+              <summary class="fold-head">
+                <h3>识别规则</h3>
+                <span class="fold-caret" aria-hidden="true">▸</span>
+              </summary>
+              <div class="fold-body">
+                <label class="field">
+                  <span>站点</span>
+                  <select id="rule-preset">
+                    <option value="auto">自动识别（推荐）</option>
+                    <option value="ixdzs">爱下电子书</option>
+                    <option value="biquge">笔趣阁系</option>
+                    <option value="numbered">数字标题（1. 标题）</option>
+                    <option value="english">英文 Chapter</option>
+                    <option value="custom">自定义…</option>
+                  </select>
+                </label>
+                <details id="rule-details" class="rules">
+                  <summary>自定义规则（JSON）</summary>
+                  <textarea id="rule-json" spellcheck="false" rows="5" placeholder='{"name":"我的规则","chapter":"^第\\d+章.*$","drop":["广告"]}'></textarea>
+                  <div class="rule-actions">
+                    <button id="rule-apply" class="ghost small" type="button">应用</button>
+                    <button id="rule-export" class="ghost small" type="button">导出</button>
+                    <button id="rule-import" class="ghost small" type="button">导入</button>
+                    <input id="rule-file" type="file" accept="application/json,.json" hidden />
+                  </div>
+                  <p id="rule-error" class="hint error" hidden></p>
+                </details>
               </div>
-              <p id="rule-error" class="hint error" hidden></p>
             </details>
-          </div>
 
-          <div class="group">
-            <h3>排版</h3>
-            <label class="field">
-              <span>字体</span>
-              <select id="font">
-                <option value="serif">宋体 / 衬线</option>
-                <option value="kai">楷体</option>
-                <option value="sans">黑体 / 无衬线</option>
-              </select>
-            </label>
-            <label class="field range">
-              <span>行距 <b id="line-height-val">1.75</b></span>
-              <input id="line-height" type="range" min="1.4" max="2.2" step="0.05" value="1.75" />
-            </label>
-            <label class="field range">
-              <span>段间距 <b id="para-gap-val">0</b></span>
-              <input id="para-gap" type="range" min="0" max="1" step="0.1" value="0" />
-            </label>
-            <label class="check">
-              <input id="indent" type="checkbox" checked />
-              首行缩进两字
-            </label>
-            <label class="check">
-              <input id="justify" type="checkbox" checked />
-              两端对齐
-            </label>
-          </div>
+            <div class="group">
+              <h3>排版</h3>
+              <label class="field">
+                <span>字体</span>
+                <select id="font">
+                  <option value="serif">宋体 / 衬线</option>
+                  <option value="kai">楷体</option>
+                  <option value="sans">黑体 / 无衬线</option>
+                </select>
+              </label>
+              <label class="field range">
+                <span>行距 <b id="line-height-val">1.75</b></span>
+                <input id="line-height" type="range" min="1.4" max="2.2" step="0.05" value="1.75" />
+              </label>
+              <label class="field range">
+                <span>段间距 <b id="para-gap-val">0</b></span>
+                <input id="para-gap" type="range" min="0" max="1" step="0.1" value="0" />
+              </label>
+              <label class="check">
+                <input id="indent" type="checkbox" checked />
+                首行缩进两字
+              </label>
+              <label class="check">
+                <input id="justify" type="checkbox" checked />
+                两端对齐
+              </label>
+            </div>
 
-          <div class="group">
-            <h3>本地草稿</h3>
-            <p id="draft-status" class="hint">改动会自动保存在这台设备上，刷新后可继续</p>
-            <button id="clear-draft" class="ghost small" type="button">清除草稿</button>
+            <div class="group">
+              <h3>本地草稿</h3>
+              <p id="draft-status" class="hint">改动会自动保存在这台设备上，刷新后可继续</p>
+              <button id="clear-draft" class="ghost small" type="button">清除草稿</button>
+            </div>
           </div>
 
           <div class="group export-group">
@@ -277,7 +346,7 @@
               </select>
             </label>
             <button id="export" class="primary wide" type="button" disabled>导出 EPUB</button>
-            <p class="hint">EPUB 3，含封面与目录。Kindle 可用「发送至 Kindle」推送。</p>
+            <p id="export-hint" class="hint">EPUB 3 · 含封面与目录，Kindle 可推送</p>
             <p id="status" class="status" role="status"></p>
           </div>
         </aside>
@@ -287,8 +356,19 @@
     <footer class="footer">
       <span>纯前端 · 无后端 · 数据不离开设备</span>
       <span>适合汉王 / 文石 / 掌阅 / Kobo / Kindle / 微信读书</span>
-      <span>MIT 开源 · 可自行部署</span>
+      <a
+        class="footer-link"
+        href="https://github.com/xiaoxura/txt2book"
+        target="_blank"
+        rel="noopener noreferrer"
+      >MIT 开源 · GitHub 源码</a>
     </footer>
+
+    <div id="cover-view" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="封面大图">
+      <button id="cover-view-close" class="lightbox-close" type="button" aria-label="关闭封面预览">×</button>
+      <img id="cover-view-img" alt="封面大图" />
+      <p class="lightbox-hint">点击空白处或按 Esc 关闭</p>
+    </div>
 
     <div id="toast" class="toast" hidden></div>
     <noscript>这个工具需要启用 JavaScript。</noscript>

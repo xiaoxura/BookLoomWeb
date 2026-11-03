@@ -32,9 +32,15 @@ const $ = <T extends Element = HTMLElement>(selector: string): T => {
 const els = {
   dropZone: $('#drop-zone'),
   fileInput: $('#file-input') as HTMLInputElement,
-  pickFile: $('#pick-file'),
-  loadSample: $('#load-sample'),
+  pickFile: $('#pick-file') as HTMLButtonElement,
+  loadSample: $('#load-sample') as HTMLButtonElement,
+  dropLoading: $('#drop-loading'),
+  dropLoadingPhase: $('#drop-loading-phase'),
+  appProgress: $('#app-progress'),
+  themeToggle: $('#theme-toggle') as HTMLButtonElement,
+  themeIcon: $('#theme-icon'),
   workspace: $('#workspace'),
+  mobileTabs: $('#mobile-tabs'),
   guide: $('#guide'),
   privacy: $('#privacy'),
   batch: $('#batch'),
@@ -55,15 +61,23 @@ const els = {
   diagList: $('#diag-list'),
   diagDismiss: $('#diag-dismiss') as HTMLButtonElement,
   preview: $('#preview'),
+  previewScroll: $('#preview-scroll'),
   previewMeta: $('#preview-meta'),
+  prevChapter: $('#prev-chapter') as HTMLButtonElement,
+  nextChapter: $('#next-chapter') as HTMLButtonElement,
+  chapterPosition: $('#chapter-position'),
   selectionBar: $('#selection-bar'),
   selectionIndex: $('#selection-index'),
   metaTitle: $('#meta-title') as HTMLInputElement,
   metaAuthor: $('#meta-author') as HTMLInputElement,
-  coverThumb: $('#cover-thumb'),
+  coverThumb: $('#cover-thumb') as HTMLButtonElement,
   coverUpload: $('#cover-upload'),
   coverAuto: $('#cover-auto'),
+  coverRemove: $('#cover-remove') as HTMLButtonElement,
   coverInput: $('#cover-input') as HTMLInputElement,
+  coverView: $('#cover-view'),
+  coverViewClose: $('#cover-view-close') as HTMLButtonElement,
+  coverViewImg: $('#cover-view-img') as HTMLImageElement,
   encoding: $('#encoding') as HTMLSelectElement,
   filterAds: $('#filter-ads') as HTMLInputElement,
   rulePreset: $('#rule-preset') as HTMLSelectElement,
@@ -83,6 +97,7 @@ const els = {
   indent: $('#indent') as HTMLInputElement,
   justify: $('#justify') as HTMLInputElement,
   export: $('#export') as HTMLButtonElement,
+  exportHint: $('#export-hint'),
   epubVersion: $('#epub-version') as HTMLSelectElement,
   status: $('#status'),
   draftStatus: $('#draft-status'),
@@ -100,6 +115,77 @@ const DEFAULT_LAYOUT: LayoutOptions = {
 
 const LAYOUT_KEY = 'txt2book.layout.v1';
 const EPUB_VERSION_KEY = 'txt2book.epubVersion';
+const THEME_KEY = 'txt2book.theme';
+
+type ThemeMode = 'auto' | 'light' | 'dark';
+type MobileView = 'chapters' | 'preview' | 'settings';
+
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+const mobileQuery = window.matchMedia('(max-width: 760px)');
+
+function isMobileViewport(): boolean {
+  return mobileQuery.matches;
+}
+
+function loadTheme(): ThemeMode {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    /* 隐私模式下可能读取失败 */
+  }
+  return 'auto';
+}
+
+let themeMode: ThemeMode = loadTheme();
+let mobileView: MobileView = (els.workspace.dataset.mobileView as MobileView | undefined) ?? 'chapters';
+
+function resolvedDark(): boolean {
+  return themeMode === 'dark' || (themeMode === 'auto' && darkQuery.matches);
+}
+
+function applyTheme(mode: ThemeMode, persist = true): void {
+  themeMode = mode;
+  if (mode === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.dataset.theme = mode;
+
+  const label = mode === 'light' ? '浅色' : mode === 'dark' ? '深色' : '跟随系统';
+  els.themeIcon.textContent = mode === 'light' ? '☀' : mode === 'dark' ? '☾' : '◐';
+  els.themeToggle.title = `主题：${label}（点击切换）`;
+  els.themeToggle.setAttribute('aria-label', `当前主题${label}，点击切换`);
+
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (meta) meta.content = resolvedDark() ? '#17150f' : '#f4efe4';
+
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_KEY, mode);
+    } catch {
+      /* 忽略存储失败 */
+    }
+  }
+}
+
+function cycleTheme(): void {
+  const next: ThemeMode = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto';
+  applyTheme(next);
+}
+
+darkQuery.addEventListener('change', () => {
+  if (themeMode === 'auto') applyTheme('auto', false);
+});
+
+function setMobileView(view: MobileView, scroll = false): void {
+  mobileView = view;
+  els.workspace.dataset.mobileView = view;
+  els.mobileTabs.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.view === view));
+  });
+  if (!scroll) return;
+  requestAnimationFrame(() => {
+    els.workspace.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+}
 
 interface BatchItem {
   file: File;
@@ -205,6 +291,7 @@ worker.onmessage = (event: MessageEvent<FromWorker>) => {
   const message = event.data;
   if (message.type === 'progress') {
     setStatus(message.phase);
+    if (dropLoading) els.dropLoadingPhase.textContent = message.phase;
     return;
   }
   const entry = pending.get(message.id);
@@ -299,32 +386,42 @@ function renderList() {
     const input = document.createElement('input');
     input.className = 'ch-title';
     input.value = chapter.title;
-    input.title = '点击可直接改标题';
+    input.readOnly = true;
+    input.title = '点击选中章节，再点一次改标题';
+    input.setAttribute('aria-label', `章节标题：${chapter.title}`);
     input.spellcheck = false;
 
     const actions = document.createElement('div');
     actions.className = 'row-actions';
 
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.dataset.act = 'rename';
+    rename.title = '重命名标题';
+    rename.textContent = '✎';
+
     const level = document.createElement('button');
     level.type = 'button';
     level.dataset.act = 'level';
     level.title = chapter.level === 1 ? '降为普通章节' : '升为卷';
-    level.textContent = chapter.level === 1 ? '章' : '卷';
+    level.textContent = chapter.level === 1 ? '降章' : '升卷';
 
     const merge = document.createElement('button');
     merge.type = 'button';
     merge.dataset.act = 'merge';
-    merge.title = '并入上一章';
+    merge.disabled = index === 0;
+    merge.title = index === 0 ? '已经是第一章，不能并入上一章' : '并入上一章';
     merge.textContent = '↑';
 
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.dataset.act = 'delete';
-    remove.title = '删除本章';
+    remove.disabled = state.chapters.length <= 1;
+    remove.title = state.chapters.length <= 1 ? '至少保留一章' : '删除本章';
     remove.className = 'danger';
     remove.textContent = '×';
 
-    actions.append(level, merge, remove);
+    actions.append(rename, level, merge, remove);
     row.append(idx, input, actions);
     fragment.appendChild(row);
   });
@@ -357,6 +454,7 @@ function renderPreview() {
   const chapter = activeChapter();
   els.preview.replaceChildren();
   applyLayoutToPreview();
+  updateChapterNav();
 
   if (!chapter) {
     const p = document.createElement('p');
@@ -364,6 +462,8 @@ function renderPreview() {
     p.textContent = '选择左侧章节开始预览';
     els.preview.appendChild(p);
     els.previewMeta.textContent = '';
+    els.previewScroll.scrollTop = 0;
+    updateSelectionBar();
     return;
   }
 
@@ -408,8 +508,32 @@ function renderPreview() {
 
   const chars = chapter.paragraphs.reduce((n, p) => n + p.length, 0);
   els.previewMeta.textContent = `${chapter.paragraphs.length} 段 · ${chars.toLocaleString('zh-CN')} 字 · 点段落可拆分`;
-  els.preview.scrollTop = 0;
+  els.previewScroll.scrollTop = 0;
   updateSelectionBar();
+}
+
+function updateChapterNav() {
+  const index = state.chapters.findIndex((chapter) => chapter.id === state.activeId);
+  const total = state.chapters.length;
+  els.prevChapter.disabled = index <= 0;
+  els.nextChapter.disabled = index < 0 || index >= total - 1;
+  els.chapterPosition.textContent = index >= 0 && total ? `${index + 1} / ${total}` : '—';
+  els.chapterPosition.title = '当前章节在目录中的位置';
+}
+
+function stepChapter(delta: -1 | 1) {
+  const index = state.chapters.findIndex((chapter) => chapter.id === state.activeId);
+  if (index < 0) return;
+  const next = state.chapters[index + delta];
+  if (!next) return;
+  setActive(next.id);
+  if (isMobileViewport()) return;
+  requestAnimationFrame(() => {
+    const row = Array.from(els.chapterList.querySelectorAll<HTMLElement>('.chapter-row')).find(
+      (item) => item.dataset.id === next.id,
+    );
+    row?.scrollIntoView({ block: 'nearest' });
+  });
 }
 
 /* ---------------- 段落选择 / 诊断 ---------------- */
@@ -425,11 +549,13 @@ function updateSelectionBar() {
   const splitButton = els.selectionBar.querySelector<HTMLButtonElement>('[data-act="split"]');
   if (splitButton) {
     splitButton.disabled = index === 0;
-    splitButton.title = index === 0 ? '这是本章第一段，没法再往上拆' : '';
+    splitButton.title =
+      index === 0 ? '这是本章第一段，没法再往上拆' : '截断本章，从这一段开始新的一章';
   }
   const titleButton = els.selectionBar.querySelector<HTMLButtonElement>('[data-act="title"]');
   if (titleButton) {
-    titleButton.title = index === 0 ? '用这一段作为本章标题' : '';
+    titleButton.title =
+      index === 0 ? '用这一段替换本章标题' : '把这一段作为新章节标题，正文从下一段开始';
   }
 }
 
@@ -482,7 +608,16 @@ function renderDiagnostics() {
     label.dataset.chapterIndex = String(item.chapterIndex);
     label.dataset.paragraphIndex = String(item.paragraphIndex);
     label.title = `「${item.chapterTitle}」第 ${item.paragraphIndex + 1} 段，点击定位`;
-    label.textContent = item.text;
+
+    const candidate = document.createElement('span');
+    candidate.className = 'diag-cand';
+    candidate.textContent = item.text;
+
+    const source = document.createElement('span');
+    source.className = 'diag-src';
+    source.textContent = `来自「${item.chapterTitle}」第 ${item.paragraphIndex + 1} 段`;
+
+    label.append(candidate, source);
 
     const action = document.createElement('button');
     action.type = 'button';
@@ -490,7 +625,13 @@ function renderDiagnostics() {
     action.dataset.role = 'title';
     action.dataset.chapterIndex = String(item.chapterIndex);
     action.dataset.paragraphIndex = String(item.paragraphIndex);
-    action.textContent = '设为标题';
+    if (item.paragraphIndex === 0) {
+      action.title = '用这一段替换本章标题';
+      action.textContent = '设为标题';
+    } else {
+      action.title = '以此段作为新章节标题，从此处拆出一章';
+      action.textContent = '拆为新章';
+    }
 
     row.append(label, action);
     els.diagList.appendChild(row);
@@ -504,12 +645,31 @@ function renderDiagnostics() {
   }
 }
 
+function openCoverView() {
+  if (!state.coverUrl) return;
+  els.coverViewImg.src = state.coverUrl;
+  els.coverView.hidden = false;
+  document.body.style.overflow = 'hidden';
+  els.coverViewClose.focus();
+}
+
+function closeCoverView(restoreFocus = false) {
+  if (els.coverView.hidden) return;
+  els.coverView.hidden = true;
+  document.body.style.overflow = '';
+  if (restoreFocus) els.coverThumb.focus();
+}
+
 function renderCover() {
+  closeCoverView();
   if (state.coverUrl) {
     URL.revokeObjectURL(state.coverUrl);
     state.coverUrl = null;
   }
   els.coverThumb.replaceChildren();
+  els.coverRemove.hidden = !state.cover;
+  els.coverThumb.title = state.cover ? '点击查看封面大图' : '点击上传封面';
+  els.coverThumb.setAttribute('aria-label', state.cover ? '查看封面大图' : '上传封面');
   if (!state.cover) {
     const span = document.createElement('span');
     span.textContent = '无封面';
@@ -547,11 +707,42 @@ function updateControls() {
   els.justify.checked = state.layout.justify;
   els.font.value = state.layout.font;
   els.epubVersion.value = String(state.epubVersion);
+  paintRange(els.lineHeight);
+  paintRange(els.paraGap);
+  updateExportHint();
+}
+
+function paintRange(input: HTMLInputElement): void {
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 100);
+  const value = Number(input.value || 0);
+  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  input.style.setProperty('--range-pct', `${Math.max(0, Math.min(100, pct))}%`);
+}
+
+function updateExportHint(): void {
+  els.exportHint.textContent =
+    state.epubVersion === 2
+      ? 'EPUB 2 · 兼容老设备（无 EPUB 3 导航页）'
+      : 'EPUB 3 · 含封面与目录，Kindle 可推送';
 }
 
 function setStatus(message: string, kind: 'normal' | 'error' = 'normal') {
   els.status.textContent = message;
   els.status.classList.toggle('error', kind === 'error');
+}
+
+let dropLoading = false;
+
+function setDropLoading(active: boolean, phase?: string): void {
+  dropLoading = active;
+  els.dropZone.classList.toggle('is-loading', active);
+  els.dropZone.setAttribute('aria-busy', active ? 'true' : 'false');
+  els.dropLoading.hidden = !active;
+  els.appProgress.hidden = !active;
+  els.pickFile.disabled = active;
+  els.loadSample.disabled = active;
+  if (phase) els.dropLoadingPhase.textContent = phase;
 }
 
 /* ---------------- 提示 ---------------- */
@@ -603,6 +794,7 @@ function showWorkspace() {
   els.guide.hidden = true;
   els.privacy.hidden = true;
   els.batch.hidden = true;
+  setMobileView('preview');
 }
 
 function setActive(id: string | null) {
@@ -612,6 +804,7 @@ function setActive(id: string | null) {
     row.classList.toggle('active', row.dataset.id === id);
   });
   renderPreview();
+  if (id && isMobileViewport() && mobileView !== 'preview') setMobileView('preview', true);
 }
 
 function applyResult(result: ParseResult) {
@@ -637,7 +830,10 @@ function applyResult(result: ParseResult) {
 }
 
 async function loadFile(file: File) {
-  if (state.busy) return;
+  if (state.busy) {
+    toast('正在处理，请稍候');
+    return;
+  }
   if (file.size > 80 * 1024 * 1024) {
     const message = '文件超过 80MB，浏览器内存可能不够';
     setStatus(message, 'error');
@@ -652,6 +848,7 @@ async function loadFile(file: File) {
   // 新书默认重新自动检测，不能沿用上一本手动选的编码
   els.encoding.value = 'auto';
   setStatus('正在读取文件…');
+  setDropLoading(true, `正在读取「${file.name}」…`);
 
   try {
     const buffer = await file.arrayBuffer();
@@ -682,6 +879,7 @@ async function loadFile(file: File) {
     setStatus(message, 'error');
     toast(`解析失败：${message}`);
   } finally {
+    setDropLoading(false);
     state.busy = false;
     updateControls();
   }
@@ -718,6 +916,7 @@ function scheduleAutoCover() {
   if (!state.coverAuto) return;
   window.clearTimeout(coverTimer);
   coverTimer = window.setTimeout(async () => {
+    if (!state.coverAuto) return;
     try {
       state.cover = await generateCover(state.meta.title || '未命名', state.meta.author || '佚名');
       renderCover();
@@ -818,6 +1017,20 @@ function commitChapters(next: Chapter[], activeId: string, focusTitle = false) {
   if (focusTitle) focusChapterTitle(activeId);
 }
 
+function beginTitleEdit(input: HTMLInputElement) {
+  input.readOnly = false;
+  input.classList.add('editing');
+  input.dataset.original = input.value;
+  input.focus();
+  input.select();
+}
+
+function endTitleEdit(input: HTMLInputElement) {
+  input.readOnly = true;
+  input.classList.remove('editing');
+  delete input.dataset.original;
+}
+
 function focusChapterTitle(id: string) {
   requestAnimationFrame(() => {
     const row = Array.from(els.chapterList.querySelectorAll<HTMLElement>('.chapter-row')).find(
@@ -825,8 +1038,7 @@ function focusChapterTitle(id: string) {
     );
     const input = row?.querySelector<HTMLInputElement>('.ch-title');
     if (!input) return;
-    input.focus();
-    input.select();
+    beginTitleEdit(input);
     input.scrollIntoView({ block: 'nearest' });
   });
 }
@@ -907,6 +1119,8 @@ function splitAt(chapterIndex: number, paragraphIndex: number, mode: 'split' | '
   state.filter = '';
   els.chapterSearch.value = '';
   commitChapters(next, id, true);
+  // 手机上分章后切回目录，新的章节标题才能获得焦点直接改
+  if (isMobileViewport()) setMobileView('chapters');
   toast(mode === 'title' ? '已把这一段设为新章标题，可直接改' : '已从这一段分出新章', {
     label: '撤销',
     onClick: () => restore(snapshot, chapter.id),
@@ -1360,6 +1574,19 @@ async function handleClearDraft() {
 /* ---------------- 事件绑定 ---------------- */
 
 function bindEvents() {
+  els.themeToggle.addEventListener('click', cycleTheme);
+
+  els.mobileTabs.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-view]');
+    if (!button) return;
+    const view = button.dataset.view as MobileView | undefined;
+    if (!view || view === mobileView) return;
+    setMobileView(view, true);
+  });
+
+  els.prevChapter.addEventListener('click', () => stepChapter(-1));
+  els.nextChapter.addEventListener('click', () => stepChapter(1));
+
   els.pickFile.addEventListener('click', () => els.fileInput.click());
   els.changeFile.addEventListener('click', () => els.fileInput.click());
   els.fileInput.addEventListener('change', () => {
@@ -1428,11 +1655,53 @@ function bindEvents() {
       setChapterLevel(index);
       return;
     }
-    if (target instanceof HTMLInputElement) {
-      setActive(row.dataset.id ?? null);
+    if (action === 'rename') {
+      const input = row.querySelector<HTMLInputElement>('.ch-title');
+      if (input) beginTitleEdit(input);
       return;
     }
+    if (target instanceof HTMLInputElement && target.classList.contains('ch-title')) {
+      // 标题平时只读：先选中章节，再点一次才进编辑态，避免手机一点就弹键盘
+      if (!target.readOnly) return;
+      if (row.classList.contains('active')) {
+        beginTitleEdit(target);
+        return;
+      }
+    }
     setActive(row.dataset.id ?? null);
+  });
+
+  els.chapterList.addEventListener('dblclick', (event) => {
+    const input = (event.target as HTMLElement).closest<HTMLInputElement>('.ch-title');
+    if (input && input.readOnly) beginTitleEdit(input);
+  });
+
+  els.chapterList.addEventListener('focusout', (event) => {
+    const input = (event.target as HTMLElement).closest<HTMLInputElement>('.ch-title');
+    if (input && !input.readOnly) endTitleEdit(input);
+  });
+
+  els.chapterList.addEventListener('keydown', (event) => {
+    const input = (event.target as HTMLElement).closest<HTMLInputElement>('.ch-title');
+    if (!input) return;
+    if (input.readOnly) {
+      if (event.key === 'Enter' || event.key === 'F2') {
+        event.preventDefault();
+        beginTitleEdit(input);
+      }
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      input.blur();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      input.value = input.dataset.original ?? input.value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.blur();
+    }
   });
 
   els.chapterList.addEventListener('input', (event) => {
@@ -1443,6 +1712,7 @@ function bindEvents() {
     const chapter = state.chapters.find((item) => item.id === row.dataset.id);
     if (!chapter) return;
     chapter.title = input.value;
+    input.setAttribute('aria-label', `章节标题：${input.value}`);
     scheduleDraftSave();
     if (chapter.id === state.activeId) {
       const heading = els.preview.querySelector('h1, h2');
@@ -1461,7 +1731,26 @@ function bindEvents() {
     scheduleDraftSave();
   });
 
+  els.coverThumb.addEventListener('click', () => {
+    if (state.coverUrl) openCoverView();
+    else els.coverInput.click();
+  });
+  els.coverViewClose.addEventListener('click', () => closeCoverView(true));
+  els.coverView.addEventListener('click', (event) => {
+    if (event.target === els.coverViewImg) return;
+    closeCoverView(true);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !els.coverView.hidden) closeCoverView(true);
+  });
   els.coverUpload.addEventListener('click', () => els.coverInput.click());
+  els.coverRemove.addEventListener('click', () => {
+    state.cover = null;
+    state.coverAuto = false;
+    renderCover();
+    scheduleDraftSave();
+    toast('已移除封面，导出时不再包含封面');
+  });
   els.coverInput.addEventListener('change', async () => {
     const file = els.coverInput.files?.[0];
     els.coverInput.value = '';
@@ -1471,6 +1760,7 @@ function bindEvents() {
       state.coverAuto = false;
       renderCover();
       scheduleDraftSave();
+      toast('封面已更新，导出后可在阅读器书架看到');
     } catch (error) {
       toast(error instanceof Error ? error.message : '封面读取失败');
     }
@@ -1499,6 +1789,7 @@ function bindEvents() {
   els.export.addEventListener('click', () => void exportEpub());
   els.epubVersion.addEventListener('change', () => {
     state.epubVersion = els.epubVersion.value === '2' ? 2 : 3;
+    updateExportHint();
     try {
       localStorage.setItem(EPUB_VERSION_KEY, String(state.epubVersion));
     } catch {
@@ -1527,6 +1818,7 @@ function bindEvents() {
   els.lineHeight.addEventListener('input', () => {
     state.layout.lineHeight = Number(els.lineHeight.value);
     els.lineHeightVal.textContent = state.layout.lineHeight.toFixed(2);
+    paintRange(els.lineHeight);
     saveLayout();
     applyLayoutToPreview();
     scheduleDraftSave();
@@ -1534,6 +1826,7 @@ function bindEvents() {
   els.paraGap.addEventListener('input', () => {
     state.layout.paragraphSpacing = Number(els.paraGap.value);
     els.paraGapVal.textContent = state.layout.paragraphSpacing.toFixed(1);
+    paintRange(els.paraGap);
     saveLayout();
     applyLayoutToPreview();
     scheduleDraftSave();
@@ -1633,6 +1926,10 @@ function bindEvents() {
 
 /* ---------------- 启动 ---------------- */
 
+applyTheme(themeMode, false);
+setMobileView(mobileView);
+paintRange(els.lineHeight);
+paintRange(els.paraGap);
 bindEvents();
 applyLayoutToPreview();
 renderRules();
