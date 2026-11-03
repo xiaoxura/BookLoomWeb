@@ -1,5 +1,4 @@
 import './styles.css';
-import { zipSync } from 'fflate';
 import { findHeadingCandidates, guessTitle, type HeadingCandidate } from './core/chapters';
 import { coverFromImage, generateCover } from './core/cover';
 import {
@@ -9,10 +8,10 @@ import {
   loadDraft,
   loadSource,
   saveDraft,
-  saveSource,
+  sourceMatchesDraft,
   type DraftData,
 } from './core/draft';
-import { getPreset, validateRuleSpec, type RuleSpec } from './core/rules';
+import { compileRules, getPreset, validateRuleSpec, type RuleSpec } from './core/rules';
 import {
   mergeChapterUp,
   removeChapterAt,
@@ -21,7 +20,8 @@ import {
   toggleChapterLevel,
 } from './core/edit';
 import type { BookMeta, Chapter, CoverData, LayoutOptions, ParseResult } from './types';
-import type { FromWorker, ToWorker } from './worker/protocol';
+import { WorkerClient, type RequestPayload, type WorkerPort } from './worker/client';
+import type { FromWorker } from './worker/protocol';
 
 const $ = <T extends Element = HTMLElement>(selector: string): T => {
   const node = document.querySelector(selector);
@@ -38,7 +38,6 @@ const els = {
   dropLoadingPhase: $('#drop-loading-phase'),
   appProgress: $('#app-progress'),
   themeToggle: $('#theme-toggle') as HTMLButtonElement,
-  themeIcon: $('#theme-icon'),
   workspace: $('#workspace'),
   mobileTabs: $('#mobile-tabs'),
   guide: $('#guide'),
@@ -117,7 +116,7 @@ const LAYOUT_KEY = 'txt2book.layout.v1';
 const EPUB_VERSION_KEY = 'txt2book.epubVersion';
 const THEME_KEY = 'txt2book.theme';
 
-type ThemeMode = 'auto' | 'light' | 'dark';
+type ThemeMode = 'light' | 'dark';
 type MobileView = 'chapters' | 'preview' | 'settings';
 
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -134,28 +133,25 @@ function loadTheme(): ThemeMode {
   } catch {
     /* 隐私模式下可能读取失败 */
   }
-  return 'auto';
+  return document.documentElement.dataset.theme === 'dark' || darkQuery.matches ? 'dark' : 'light';
 }
 
 let themeMode: ThemeMode = loadTheme();
 let mobileView: MobileView = (els.workspace.dataset.mobileView as MobileView | undefined) ?? 'chapters';
 
-function resolvedDark(): boolean {
-  return themeMode === 'dark' || (themeMode === 'auto' && darkQuery.matches);
-}
-
 function applyTheme(mode: ThemeMode, persist = true): void {
   themeMode = mode;
-  if (mode === 'auto') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.dataset.theme = mode;
+  const dark = mode === 'dark';
+  document.documentElement.dataset.theme = mode;
+  document.documentElement.style.colorScheme = mode;
 
-  const label = mode === 'light' ? '浅色' : mode === 'dark' ? '深色' : '跟随系统';
-  els.themeIcon.textContent = mode === 'light' ? '☀' : mode === 'dark' ? '☾' : '◐';
-  els.themeToggle.title = `主题：${label}（点击切换）`;
-  els.themeToggle.setAttribute('aria-label', `当前主题${label}，点击切换`);
+  const label = dark ? '切换到浅色主题' : '切换到深色主题';
+  els.themeToggle.title = label;
+  els.themeToggle.setAttribute('aria-label', label);
+  els.themeToggle.setAttribute('aria-pressed', String(dark));
 
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) meta.content = resolvedDark() ? '#17150f' : '#f4efe4';
+  if (meta) meta.content = dark ? '#17150f' : '#f4efe4';
 
   if (persist) {
     try {
@@ -166,14 +162,9 @@ function applyTheme(mode: ThemeMode, persist = true): void {
   }
 }
 
-function cycleTheme(): void {
-  const next: ThemeMode = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto';
-  applyTheme(next);
+function toggleTheme(): void {
+  applyTheme(themeMode === 'dark' ? 'light' : 'dark');
 }
-
-darkQuery.addEventListener('change', () => {
-  if (themeMode === 'auto') applyTheme('auto', false);
-});
 
 function setMobileView(view: MobileView, scroll = false): void {
   mobileView = view;
@@ -220,6 +211,8 @@ interface State {
   batchRunning: boolean;
   batchCancelled: boolean;
   sourceReady: boolean;
+  /** 当前草稿关联的原始 TXT id，旧草稿为 null */
+  sourceId: string | null;
 }
 
 const state: State = {
@@ -246,6 +239,7 @@ const state: State = {
   batchRunning: false,
   batchCancelled: false,
   sourceReady: false,
+  sourceId: null,
 };
 
 function loadLayout(): LayoutOptions {
@@ -276,41 +270,31 @@ function saveLayout() {
 
 /* ---------------- Worker ---------------- */
 
-const worker = new Worker(new URL('./worker/pipeline.ts', import.meta.url), { type: 'module' });
-
 /** 每次加载新文件/批量开始时 +1；草稿恢复看到代次变化就放弃，避免覆盖新内容 */
 let loadEpoch = 0;
 
-type DistributiveOmit<T, K extends keyof never> = T extends unknown ? Omit<T, K> : never;
-type RequestPayload = DistributiveOmit<ToWorker, 'id'>;
-
-let seq = 0;
-const pending = new Map<number, { resolve: (value: FromWorker) => void; reject: (error: Error) => void }>();
-
-worker.onmessage = (event: MessageEvent<FromWorker>) => {
-  const message = event.data;
-  if (message.type === 'progress') {
-    setStatus(message.phase);
-    if (dropLoading) els.dropLoadingPhase.textContent = message.phase;
-    return;
-  }
-  const entry = pending.get(message.id);
-  if (!entry) return;
-  pending.delete(message.id);
-  if (message.type === 'error') entry.reject(new Error(message.message));
-  else entry.resolve(message);
-};
-
-worker.onerror = (event) => {
-  setStatus(`后台线程出错：${event.message}`, 'error');
-};
+const workerClient = new WorkerClient(
+  () =>
+    new Worker(new URL('./worker/pipeline.ts', import.meta.url), {
+      type: 'module',
+    }) as unknown as WorkerPort,
+  {
+    onProgress: (phase) => {
+      setStatus(phase);
+      if (dropLoading) els.dropLoadingPhase.textContent = phase;
+    },
+    onError: (error) => {
+      // Worker 被重置后内存里的原文也没了，禁用重新识别，避免误以为还能用
+      state.sourceReady = false;
+      setStatus(`后台线程出错：${error.message}`, 'error');
+      updateControls();
+      toast('后台线程已重置，请重试；重新识别需要重新拖入 TXT');
+    },
+  },
+);
 
 function call(payload: RequestPayload, transfer: Transferable[] = []): Promise<FromWorker> {
-  const id = ++seq;
-  return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    worker.postMessage({ ...payload, id } as ToWorker, transfer);
-  });
+  return workerClient.call(payload, transfer);
 }
 
 /* ---------------- 状态与渲染 ---------------- */
@@ -575,7 +559,7 @@ function recomputeDiagnostics() {
   const token = ++diagToken;
   const run = () => {
     if (token !== diagToken) return;
-    state.diagnostics = findHeadingCandidates(state.chapters);
+    state.diagnostics = findHeadingCandidates(state.chapters, compileRules(state.rules));
     renderDiagnostics();
   };
   if (typeof window.requestIdleCallback === 'function') {
@@ -858,6 +842,10 @@ async function loadFile(file: File) {
     );
     if (res.type !== 'parsed' || epoch !== loadEpoch) return;
 
+    // 换书成功后再取消旧的自动保存，解析失败时旧书的待保存内容不受影响
+    cancelScheduledDraftSave();
+    const sessionEpoch = draftEpoch;
+    state.sourceId = createSourceId();
     state.filename = file.name;
     state.meta.title = guessTitle(file.name);
     state.meta.author = '';
@@ -866,14 +854,7 @@ async function loadFile(file: File) {
     showWorkspace();
     window.scrollTo(0, 0);
     applyResult(res.result);
-    void (async () => {
-      try {
-        const copy = await file.arrayBuffer();
-        await saveSource({ name: file.name, data: copy });
-      } catch {
-        /* 源文件存不下也不影响当前会话 */
-      }
-    })();
+    void persistSourceWithDraft(file, epoch, sessionEpoch);
   } catch (error) {
     const message = error instanceof Error ? error.message : '解析失败';
     setStatus(message, 'error');
@@ -888,7 +869,7 @@ async function loadFile(file: File) {
 async function reparse() {
   if (!state.parsed || state.busy) return;
   if (!state.sourceReady) {
-    toast('恢复的草稿没有原始文件，重新拖入 TXT 后才能换编码或重新识别');
+    toast('草稿没有可用的原始文件，重新拖入 TXT 后才能换编码或重新识别');
     return;
   }
   state.busy = true;
@@ -1139,6 +1120,12 @@ function setChapterLevel(index: number) {
 /* ---------------- 批量转换 ---------------- */
 
 const MAX_BATCH_FILES = 40;
+const MAX_BATCH_FILE_BYTES = 80 * 1024 * 1024;
+const MAX_BATCH_TOTAL_BYTES = 200 * 1024 * 1024;
+
+type BatchArchive = { blob: Blob; name: string };
+let batchArchive: BatchArchive | null = null;
+let batchZipPromise: Promise<BatchArchive | null> | null = null;
 
 function startBatch(files: File[]) {
   if (state.busy) {
@@ -1149,7 +1136,19 @@ function startBatch(files: File[]) {
     toast(`一次最多 ${MAX_BATCH_FILES} 本，请分批处理`);
     return;
   }
+  const oversized = files.find((file) => file.size > MAX_BATCH_FILE_BYTES);
+  if (oversized) {
+    toast(`「${oversized.name}」超过 80MB，请先拆分后再转换`);
+    return;
+  }
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_BATCH_TOTAL_BYTES) {
+    toast(`一次批量最多 200MB（当前 ${formatBytes(totalBytes)}），请分批处理`);
+    return;
+  }
   loadEpoch += 1;
+  batchArchive = null;
+  batchZipPromise = null;
   state.batchItems = files.map((file) => ({ file, title: guessTitle(file.name), status: 'waiting' }));
   state.batchRunning = true;
   state.batchCancelled = false;
@@ -1287,13 +1286,16 @@ async function runBatch() {
 
   if (done > 0) {
     els.batchStatus.textContent = `完成 ${done} 本，正在打包…`;
-    downloadBatchZip();
+    await downloadBatchZip();
   } else {
     els.batchStatus.textContent = '没有成功转换的文件';
   }
 }
 
-function buildBatchZip(): { blob: Blob; name: string } | null {
+function buildBatchZip(): Promise<BatchArchive | null> {
+  if (batchArchive) return Promise.resolve(batchArchive);
+  if (batchZipPromise) return batchZipPromise;
+
   const files: Record<string, Uint8Array> = {};
   const used = new Set<string>();
   let count = 0;
@@ -1309,22 +1311,42 @@ function buildBatchZip(): { blob: Blob; name: string } | null {
     count += 1;
   }
 
-  if (!count) return null;
-  const zip = zipSync(files, { level: 0 });
-  return {
-    blob: new Blob([toArrayBuffer(zip)], { type: 'application/zip' }),
-    name: `txt2book-${count}本.zip`,
-  };
+  if (!count) return Promise.resolve(null);
+
+  batchZipPromise = (async () => {
+    try {
+      // ZIP 放到 Worker 里生成，主线程只负责保存和下载
+      const res = await call({ type: 'zip', files });
+      if (res.type !== 'zipped') throw new Error('打包失败');
+      const archive: BatchArchive = {
+        blob: new Blob([toArrayBuffer(res.data)], { type: 'application/zip' }),
+        name: `txt2book-${count}本.zip`,
+      };
+      batchArchive = archive;
+      // ZIP 已经缓存成 Blob，EPUB 原始字节可以释放
+      for (const item of state.batchItems) item.data = undefined;
+      return archive;
+    } catch (error) {
+      els.batchStatus.textContent = `打包失败：${error instanceof Error ? error.message : '未知错误'}`;
+      return null;
+    } finally {
+      batchZipPromise = null;
+    }
+  })();
+  return batchZipPromise;
 }
 
-function downloadBatchZip() {
-  const archive = buildBatchZip();
+async function downloadBatchZip() {
+  const archive = await buildBatchZip();
   if (!archive) return;
   download(archive.blob, archive.name);
   els.batchStatus.textContent = `已打包 ${archive.name}（${formatBytes(archive.blob.size)}）`;
 }
 
 function resetBatch() {
+  batchArchive = null;
+  batchZipPromise = null;
+  for (const item of state.batchItems) item.data = undefined;
   state.batchItems = [];
   state.batchRunning = false;
   state.batchCancelled = false;
@@ -1414,8 +1436,103 @@ async function importRules(file: File) {
 /* ---------------- 本地草稿 ---------------- */
 
 let draftTimer = 0;
-let draftSaving = false;
-let draftPending = false;
+let draftIdle = 0;
+let draftEpoch = 0;
+let draftSaveChain: Promise<void> = Promise.resolve();
+
+function cancelScheduledDraftSave() {
+  draftEpoch += 1;
+  window.clearTimeout(draftTimer);
+  draftTimer = 0;
+  if (draftIdle && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(draftIdle);
+    draftIdle = 0;
+  }
+}
+
+function enqueueDraftWrite(task: () => Promise<void>): Promise<void> {
+  const next = draftSaveChain.then(task, task);
+  draftSaveChain = next.catch(() => undefined);
+  return next;
+}
+
+function scheduleDraftSave(delay = 1200) {
+  if (!state.parsed) return;
+  window.clearTimeout(draftTimer);
+  if (draftIdle && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(draftIdle);
+    draftIdle = 0;
+  }
+  const epoch = draftEpoch;
+  draftTimer = window.setTimeout(() => {
+    if (epoch !== draftEpoch) return;
+    if (state.busy) {
+      scheduleDraftSave(800);
+      return;
+    }
+    const run = () => {
+      draftIdle = 0;
+      if (epoch !== draftEpoch) return;
+      void saveDraftNow(epoch);
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      draftIdle = window.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      run();
+    }
+  }, delay);
+}
+
+function saveDraftNow(epoch = draftEpoch): Promise<void> {
+  const snapshot = draftSnapshot();
+  if (!snapshot) return Promise.resolve();
+  return enqueueDraftWrite(async () => {
+    if (epoch !== draftEpoch) return;
+    try {
+      await saveDraft(snapshot);
+      if (epoch !== draftEpoch) return;
+      const time = new Date(snapshot.savedAt).toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      setDraftStatus(`草稿已自动保存 · ${time}`);
+      els.draftStatus.dataset.savedAt = String(snapshot.savedAt);
+    } catch (error) {
+      if (epoch !== draftEpoch) return;
+      setDraftStatus(error instanceof Error ? error.message : '草稿保存失败，可能是存储空间不足', true);
+    }
+  });
+}
+
+function createSourceId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `src-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * 把新书的原始文件与草稿放在同一个事务里写入。
+ * 保存失败时最多留下「新草稿 + 旧原文」，恢复时 id 不匹配会被判定为无原文，不会拿去重新识别。
+ */
+async function persistSourceWithDraft(file: File, fileEpoch: number, sessionEpoch: number): Promise<void> {
+  try {
+    const copy = await file.arrayBuffer();
+    if (fileEpoch !== loadEpoch || sessionEpoch !== draftEpoch) return;
+    const snapshot = draftSnapshot();
+    if (!snapshot?.sourceId) return;
+    await enqueueDraftWrite(async () => {
+      if (fileEpoch !== loadEpoch || sessionEpoch !== draftEpoch) return;
+      try {
+        await saveDraft(snapshot, { id: snapshot.sourceId as string, name: file.name, data: copy });
+      } catch {
+        if (fileEpoch === loadEpoch && sessionEpoch === draftEpoch) {
+          toast('原始文件没能保存到本地，刷新后需要重新拖入 TXT');
+        }
+      }
+    });
+  } catch {
+    if (fileEpoch === loadEpoch) toast('原始文件读取失败，刷新后需要重新拖入 TXT');
+  }
+}
 
 function draftSnapshot(): DraftData | null {
   if (!state.parsed || !state.chapters.length) return null;
@@ -1433,52 +1550,13 @@ function draftSnapshot(): DraftData | null {
     parse: { ...state.parsed, chapters: [] },
     rules: state.rules,
     rulePreset: state.rulePreset,
+    sourceId: state.sourceId ?? undefined,
   };
 }
 
 function setDraftStatus(message: string, error = false) {
   els.draftStatus.textContent = message;
   els.draftStatus.classList.toggle('error', error);
-}
-
-function scheduleDraftSave(delay = 1200) {
-  if (!state.parsed) return;
-  window.clearTimeout(draftTimer);
-  draftTimer = window.setTimeout(() => {
-    if (state.busy) {
-      scheduleDraftSave(800);
-      return;
-    }
-    if (typeof window.requestIdleCallback === 'function') {
-      window.requestIdleCallback(() => void saveDraftNow(), { timeout: 1500 });
-    } else {
-      void saveDraftNow();
-    }
-  }, delay);
-}
-
-async function saveDraftNow() {
-  const snapshot = draftSnapshot();
-  if (!snapshot) return;
-  if (draftSaving) {
-    draftPending = true;
-    return;
-  }
-  draftSaving = true;
-  try {
-    await saveDraft(snapshot);
-    const time = new Date(snapshot.savedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-    setDraftStatus(`草稿已自动保存 · ${time}`);
-    els.draftStatus.dataset.savedAt = String(snapshot.savedAt);
-  } catch (error) {
-    setDraftStatus(error instanceof Error ? error.message : '草稿保存失败，可能是存储空间不足', true);
-  } finally {
-    draftSaving = false;
-    if (draftPending) {
-      draftPending = false;
-      scheduleDraftSave(200);
-    }
-  }
 }
 
 async function restoreDraftOnStart(): Promise<boolean> {
@@ -1492,8 +1570,14 @@ async function restoreDraftOnStart(): Promise<boolean> {
   }
   if (!draft || epoch !== loadEpoch) return false;
 
+  const sourceOk = sourceMatchesDraft(draft, source);
+  if (!sourceOk && source) {
+    // 老草稿没有 sourceId，或原文在换书时没保存成功：不能信任，直接丢掉
+    await clearSource().catch(() => undefined);
+  }
+
   let sourceReady = false;
-  if (source) {
+  if (sourceOk && source) {
     try {
       await call({ type: 'source', buffer: source.data, filename: source.name }, [source.data]);
       sourceReady = true;
@@ -1504,6 +1588,7 @@ async function restoreDraftOnStart(): Promise<boolean> {
   if (epoch !== loadEpoch) return false;
 
   state.sourceReady = sourceReady;
+  state.sourceId = draft.sourceId ?? null;
   state.filename = draft.filename ?? '';
   state.parsed = { ...draft.parse, chapters: draft.chapters };
   state.chapters = draft.chapters;
@@ -1539,7 +1624,9 @@ async function restoreDraftOnStart(): Promise<boolean> {
   renderRules();
   const warnings = [...draft.parse.warnings];
   if (!sourceReady) {
-    warnings.unshift('这是从本地草稿恢复的内容，没有原始文件；要换编码或重新识别，请重新拖入同一个 TXT。');
+    warnings.unshift(
+      '草稿关联的原始文件缺失或已失效；要换编码或重新识别，请重新拖入同一个 TXT。',
+    );
   }
   renderWarnings(warnings);
   recomputeDiagnostics();
@@ -1550,20 +1637,29 @@ async function restoreDraftOnStart(): Promise<boolean> {
   setDraftStatus(`已恢复 ${when} 的草稿`);
   setStatus('已恢复上次的草稿，继续编辑即可');
   if (!sourceReady) {
-    toast('草稿缺少原始文件，编码可能不对；建议清除后重新拖入 TXT', {
+    toast('草稿关联的原始文件缺失，重新识别前请重新拖入 TXT', {
       label: '清除草稿',
       onClick: () => {
-        void clearDraft().finally(() => window.location.reload());
+        void clearDraftStorage()
+          .catch(() => undefined)
+          .finally(() => window.location.reload());
       },
     });
   }
   return true;
 }
 
+async function clearDraftStorage(): Promise<void> {
+  // 先停止待执行的定时器/空闲回调，再等在途写入完成，最后原子删除草稿和原文
+  cancelScheduledDraftSave();
+  await draftSaveChain;
+  await clearDraft();
+  state.sourceId = null;
+}
+
 async function handleClearDraft() {
   try {
-    await clearDraft();
-    await clearSource();
+    await clearDraftStorage();
     setDraftStatus('草稿已清除，当前编辑内容仍保留在页面里');
     toast('已清除本地草稿');
   } catch {
@@ -1574,7 +1670,7 @@ async function handleClearDraft() {
 /* ---------------- 事件绑定 ---------------- */
 
 function bindEvents() {
-  els.themeToggle.addEventListener('click', cycleTheme);
+  els.themeToggle.addEventListener('click', toggleTheme);
 
   els.mobileTabs.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-view]');
@@ -1798,7 +1894,7 @@ function bindEvents() {
     scheduleDraftSave(0);
   });
   els.clearDraft.addEventListener('click', () => void handleClearDraft());
-  els.batchDownload.addEventListener('click', () => downloadBatchZip());
+  els.batchDownload.addEventListener('click', () => void downloadBatchZip());
   els.batchClose.addEventListener('click', () => {
     if (state.batchRunning) {
       state.batchCancelled = true;
@@ -1926,7 +2022,7 @@ function bindEvents() {
 
 /* ---------------- 启动 ---------------- */
 
-applyTheme(themeMode, false);
+applyTheme(themeMode);
 setMobileView(mobileView);
 paintRange(els.lineHeight);
 paintRange(els.paraGap);

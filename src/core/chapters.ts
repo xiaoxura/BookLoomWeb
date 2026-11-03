@@ -72,7 +72,9 @@ function recoverInlineHeading(
   const match = HEAD_CORE.exec(line);
   if (!match || match.index === 0) return null;
   const prefix = line.slice(0, match.index).trim();
-  if (!prefix || prefix.length > 24 || !INLINE_JUNK.test(prefix)) return null;
+  if (!prefix || prefix.length > 24) return null;
+  const knownJunk = INLINE_JUNK.test(prefix) || Boolean(rules?.inlineJunk?.test(prefix));
+  if (!knownJunk) return null;
   const suffix = line.slice(match.index).trim();
   if (!suffix || suffix.length > 42) return null;
   return classify(suffix, rules);
@@ -256,7 +258,10 @@ const SPECIAL_START = /^(?:序章|楔子|引子|番外|后记|尾声|终章|大�
  * 找出正文里「看起来像章节标题、但没被识别成标题」的段落。
  * 用于诊断面板：识别漏了以后，用户可以一键把它设为标题。
  */
-export function findHeadingCandidates(chapters: Chapter[]): HeadingCandidate[] {
+export function findHeadingCandidates(
+  chapters: Chapter[],
+  rules?: CompiledRules | null,
+): HeadingCandidate[] {
   const out: HeadingCandidate[] = [];
   chapters.forEach((chapter, chapterIndex) => {
     chapter.paragraphs.forEach((paragraph, paragraphIndex) => {
@@ -269,7 +274,8 @@ export function findHeadingCandidates(chapters: Chapter[]): HeadingCandidate[] {
       const looksLikeHeading =
         HEAD_START.test(text) ||
         SPECIAL_START.test(text) ||
-        (INLINE_JUNK.test(text) && new RegExp(`第\\s*[${CN_NUM}\\d]{1,8}\\s*[章节]`).test(text));
+        ((INLINE_JUNK.test(text) || Boolean(rules?.inlineJunk?.test(text))) &&
+          new RegExp(`第\\s*[${CN_NUM}\\d]{1,8}\\s*[章节]`).test(text));
       if (!looksLikeHeading) return;
       if (text === chapter.title.trim()) return;
       out.push({

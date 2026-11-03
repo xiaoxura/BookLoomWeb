@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" rx="112" fill="#2f2a22"/>
-  <rect x="96" y="96" width="320" height="320" rx="24" fill="none" stroke="#e8dcc2" stroke-width="10" opacity="0.5"/>
-  <text x="256" y="340" font-family="Songti SC, Noto Serif CJK SC, SimSun, serif" font-size="210" font-weight="700" fill="#f6efe0" text-anchor="middle">书</text>
+  <g fill="none" stroke="#f6efe0" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 150c-35-26-83-38-132-38-12 0-22 1-30 3v234c8-2 18-3 30-3 49 0 97 12 132 38 35-26 83-38 132-38 12 0 22 1 30 3V115c-8-2-18-3-30-3-49 0-97 12-132 38Z"/>
+    <path d="M256 150v234"/>
+  </g>
 </svg>

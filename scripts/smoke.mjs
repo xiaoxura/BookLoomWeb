@@ -35,6 +35,40 @@ async function waitForDownload(dir, extensions, timeoutMs) {
   throw new Error(`等待下载超时：${dir}`);
 }
 
+async function readSessionIds(page) {
+  return page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const request = indexedDB.open('txt2book');
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const transaction = db.transaction('drafts', 'readonly');
+          const store = transaction.objectStore('drafts');
+          const draftRequest = store.get('current');
+          const sourceRequest = store.get('source');
+          let draft;
+          let source;
+          draftRequest.onsuccess = () => {
+            draft = draftRequest.result;
+          };
+          sourceRequest.onsuccess = () => {
+            source = sourceRequest.result;
+          };
+          transaction.oncomplete = () => {
+            db.close();
+            resolve({
+              draftFilename: draft?.filename ?? null,
+              draftSourceId: draft?.sourceId ?? null,
+              sourceId: source?.id ?? null,
+            });
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+      }),
+  );
+}
+
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH ?? '/usr/bin/google-chrome',
   headless: 'new',
@@ -60,6 +94,28 @@ try {
 
   await page.goto(BASE, { waitUntil: 'networkidle0', timeout: 30000 });
   await page.screenshot({ path: path.join(OUT, 'shot-landing.png'), fullPage: true });
+
+  const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
+  const footerText = await page.$eval('.footer', (el) => el.textContent ?? '');
+  if (!footerText.includes(`v${pkg.version}`)) throw new Error(`页脚版本缺失：${footerText}`);
+  if (!/更新于 \d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(footerText)) {
+    throw new Error(`页脚构建时间缺失：${footerText}`);
+  }
+  if (footerText.includes('%APP_VERSION%') || footerText.includes('%BUILD_TIME%')) {
+    throw new Error(`页脚占位符未替换：${footerText}`);
+  }
+
+  const initialTheme = await page.evaluate(() => document.documentElement.dataset.theme);
+  if (initialTheme !== 'light' && initialTheme !== 'dark') throw new Error(`初始主题异常：${initialTheme}`);
+  await page.click('#theme-toggle');
+  const toggledTheme = await page.evaluate(() => document.documentElement.dataset.theme);
+  if (toggledTheme === initialTheme) throw new Error('主题切换没有生效');
+  const pressed = await page.$eval('#theme-toggle', (el) => el.getAttribute('aria-pressed'));
+  if (pressed !== String(toggledTheme === 'dark')) throw new Error(`主题按钮状态不对：${pressed}`);
+  await page.click('#theme-toggle');
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== initialTheme) {
+    throw new Error('主题没有切回原来的模式');
+  }
 
   await page.click('#load-sample');
   await page.waitForSelector('#workspace:not([hidden])', { timeout: 20000 });
@@ -198,6 +254,18 @@ try {
     { timeout: 15000 },
     previousSavedAt,
   );
+
+  // 草稿和原文必须带同一个 sourceId
+  let session = { draftSourceId: null, sourceId: null };
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    session = await readSessionIds(page);
+    if (session.draftSourceId && session.draftSourceId === session.sourceId) break;
+    await sleep(100);
+  }
+  if (!session.draftSourceId || session.draftSourceId !== session.sourceId) {
+    throw new Error(`草稿与原文没有建立关联：${JSON.stringify(session)}`);
+  }
+
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#workspace:not([hidden])', { timeout: 15000 });
   await page.waitForFunction(
@@ -210,6 +278,17 @@ try {
     () => (document.querySelector('#status')?.textContent ?? '').includes('识别完成'),
     { timeout: 30000 },
   );
+
+  // 换书时模拟原文写入失败：新草稿不能继续使用上一本的原文
+  await page.evaluate(() => {
+    const prototype = IDBObjectStore.prototype;
+    const original = prototype.put;
+    window.__txt2bookOriginalPut = original;
+    prototype.put = function (value, key) {
+      if (key === 'source') throw new DOMException('模拟原文保存失败', 'QuotaExceededError');
+      return original.call(this, value, key);
+    };
+  });
 
   // 换一本时必须重新自动检测编码，不能沿用上一本残留的 UTF-8
   const gbkInput = await page.$('#file-input');
@@ -225,11 +304,54 @@ try {
   if (gbkPreview.includes('\uFFFD')) throw new Error('GBK 文件仍被旧编码解码，出现替换符');
   if (!gbkPreview.includes('雾从海面漫上来')) throw new Error('GBK 正文解码错误');
 
+  // 等新书的草稿写入完成：此时 sourceId 已更新，但原文因为被拦截仍是旧的
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    session = await readSessionIds(page);
+    if (session.draftFilename === 'gbk.txt' && session.draftSourceId) break;
+    await sleep(100);
+  }
+  if (session.draftFilename !== 'gbk.txt' || !session.draftSourceId) {
+    throw new Error(`换书后的草稿没有保存：${JSON.stringify(session)}`);
+  }
+  if (session.draftSourceId === session.sourceId) {
+    throw new Error(`原文写入本应失败，但仍然匹配：${JSON.stringify(session)}`);
+  }
+
+  await page.evaluate(() => {
+    IDBObjectStore.prototype.put = window.__txt2bookOriginalPut;
+    delete window.__txt2bookOriginalPut;
+  });
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.waitForSelector('#workspace:not([hidden])', { timeout: 15000 });
+  await page.waitForFunction(
+    () => (document.querySelector('#warnings')?.textContent ?? '').includes('原始文件缺失或已失效'),
+    { timeout: 15000 },
+  );
+  if (!(await page.$eval('#reparse', (el) => el.disabled))) {
+    throw new Error('原文与草稿不匹配时仍允许重新识别');
+  }
+  if (!(await page.$eval('#encoding', (el) => el.disabled))) {
+    throw new Error('原文与草稿不匹配时仍允许切换编码');
+  }
+  const restoredGbk = await page.$eval('#preview', (el) => el.textContent ?? '');
+  if (!restoredGbk.includes('雾从海面漫上来')) throw new Error('恢复的草稿不是刚导入的 GBK 文件');
+
+  // 编辑后立刻清除：待执行的自动保存不能再把草稿写回来
+  await page.evaluate(() => {
+    const input = document.querySelector('.chapter-row .ch-title');
+    input.value = '清除竞争测试';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   await page.click('#clear-draft');
   await page.waitForFunction(
     () => (document.querySelector('#draft-status')?.textContent ?? '').includes('草稿已清除'),
     { timeout: 10000 },
   );
+  await sleep(2000);
+  const cleared = await readSessionIds(page);
+  if (cleared.draftSourceId || cleared.sourceId) {
+    throw new Error(`清除后仍有草稿或原文：${JSON.stringify(cleared)}`);
+  }
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#drop-zone:not([hidden])', { timeout: 15000 });
   if (!(await page.$eval('#workspace', (el) => el.hidden))) throw new Error('清除草稿后仍然恢复了草稿');
@@ -254,6 +376,44 @@ try {
   }
   await page.click('#batch-close');
   await page.waitForSelector('#drop-zone:not([hidden])', { timeout: 10000 });
+
+  // Worker 崩溃：待处理请求要被拒绝，不能卡在「处理中」，下次操作要能重建 Worker
+  const crashContext = await browser.createBrowserContext();
+  const crashPage = await crashContext.newPage();
+  await crashPage.setViewport({ width: 1200, height: 900, deviceScaleFactor: 1 });
+  const crashClient = await crashPage.createCDPSession();
+  await crashClient.send('Page.setDownloadBehavior', {
+    behavior: 'allow',
+    downloadPath: DOWNLOADS,
+  });
+  await crashPage.goto(BASE, { waitUntil: 'networkidle0' });
+  await crashPage.click('#load-sample');
+  await crashPage.waitForSelector('#workspace:not([hidden])', { timeout: 20000 });
+  await crashPage.waitForFunction(() => document.querySelectorAll('.chapter-row').length >= 7);
+  const workers = crashPage.workers();
+  if (!workers.length) throw new Error('页面没有启动 Worker');
+  await workers[0].evaluate(() => {
+    setTimeout(() => {
+      throw new Error('模拟 Worker 崩溃');
+    }, 0);
+  });
+  await crashPage.waitForFunction(
+    () => (document.querySelector('#status')?.textContent ?? '').includes('后台线程出错'),
+    { timeout: 15000 },
+  );
+  const crashState = await crashPage.evaluate(() => ({
+    toast: document.querySelector('#toast')?.textContent ?? '',
+    reparseDisabled: Boolean(document.querySelector('#reparse')?.disabled),
+    exportDisabled: Boolean(document.querySelector('#export')?.disabled),
+  }));
+  if (!crashState.toast.includes('已重置')) throw new Error(`Worker 崩溃后没有提示重置：${crashState.toast}`);
+  if (!crashState.reparseDisabled) throw new Error('Worker 崩溃后仍允许重新识别');
+  if (crashState.exportDisabled) throw new Error('Worker 崩溃后导出按钮仍被禁用，可能卡在忙碌状态');
+
+  await crashPage.click('#export');
+  const crashFile = await waitForDownload(DOWNLOADS, ['.epub'], 30000);
+  fs.rmSync(crashFile);
+  await crashContext.close();
 
   const mobile = await browser.newPage();
   await mobile.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });

@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "fake-indexeddb": "^6.2.7",
     "fast-xml-parser": "^5.11.2",
     "iconv-lite": "^0.7.3",
     "puppeteer-core": "^25.16.0",

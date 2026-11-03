@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { chaptersFromText } from '../src/core/chapters';
+import { chaptersFromText, findHeadingCandidates } from '../src/core/chapters';
 import { compileRules, getPreset, validateRuleSpec, type RuleSpec } from '../src/core/rules';
 
 const NUMBERED = `1. 初见
 正文一。
 2. 再会
+正文二。`;
+
+const CUSTOM_INLINE = `我的站点水印第1章 开始
+正文一。
+我的站点水印第2章 继续
 正文二。`;
 
 describe('识别规则', () => {
@@ -27,6 +32,23 @@ describe('识别规则', () => {
     expect(body).toContain('正文二。');
   });
 
+  it('自定义 inlineJunk 能识别粘连水印的标题，并用于漏章诊断', () => {
+    const spec: RuleSpec = { name: '测试', chapter: '^第\\d+章', inlineJunk: ['我的站点水印'] };
+    const rules = compileRules(spec);
+
+    const withRules = chaptersFromText(CUSTOM_INLINE, { filterAds: true, rules });
+    expect(withRules.chapters.map((c) => c.title)).toEqual(['第1章 开始', '第2章 继续']);
+
+    const withoutRules = chaptersFromText(CUSTOM_INLINE, { filterAds: true });
+    expect(withoutRules.chapters).toHaveLength(1);
+
+    const chapters = [
+      { id: 'ch-1', title: '第一章', level: 2 as const, paragraphs: ['我的站点水印第9章 决战'] },
+    ];
+    expect(findHeadingCandidates(chapters)).toHaveLength(0);
+    expect(findHeadingCandidates(chapters, rules)).toHaveLength(1);
+  });
+
   it('规则文件校验能指出错误的字段', () => {
     expect(validateRuleSpec({ name: 'ok', chapter: '^第\\d+章' })).toBeNull();
     expect(validateRuleSpec(null)).toContain('JSON 对象');
@@ -34,5 +56,6 @@ describe('识别规则', () => {
     expect(validateRuleSpec({ name: 'x', chapter: '[' })).toContain('chapter');
     expect(validateRuleSpec({ name: 'x', drop: ['['] })).toContain('drop');
     expect(validateRuleSpec({ name: 'x', drop: 'not-array' })).toContain('字符串数组');
+    expect(validateRuleSpec({ name: 'x', inlineJunk: 'not-array' })).toContain('字符串数组');
   });
 });

@@ -1,3 +1,4 @@
+import { zipSync } from 'fflate';
 import { chaptersFromText, countChars, guessAuthor, guessTitle, guessTitleFromText } from '../core/chapters';
 import { buildEpub } from '../core/epub';
 import { compileRules } from '../core/rules';
@@ -80,6 +81,13 @@ ctx.onmessage = (event) => {
         version: message.version,
       });
       post({ id: message.id, type: 'packed', data }, [data.buffer as ArrayBuffer]);
+      return;
+    }
+
+    if (message.type === 'zip') {
+      post({ id: message.id, type: 'progress', phase: '正在打包 ZIP…' });
+      const data = zipSync(message.files, { level: 0 });
+      post({ id: message.id, type: 'zipped', data }, [data.buffer as ArrayBuffer]);
     }
   } catch (error) {
     post({

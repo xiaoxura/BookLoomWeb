@@ -70,6 +70,9 @@ body {
 }
 
 body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   background:
     radial-gradient(1200px 600px at 50% -10%, var(--bg-glow), transparent 70%),
     var(--bg);
@@ -101,6 +104,7 @@ p {
   position: sticky;
   top: 0;
   z-index: 20;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -114,18 +118,18 @@ p {
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .icon-button {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
   color: var(--muted);
   font-size: 18px;
   line-height: 1;
@@ -137,13 +141,25 @@ a.icon-button {
 
 .icon-button svg {
   display: block;
-  width: 19px;
-  height: 19px;
+  width: 18px;
+  height: 18px;
 }
 
 .icon-button:hover {
-  background: var(--panel-2);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
   color: var(--ink);
+}
+
+:root .theme-icon-moon {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-icon-sun {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-icon-moon {
+  display: block;
 }
 
 .app-progress {
@@ -196,9 +212,11 @@ a:focus-visible {
   border-radius: 10px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-family: 'Songti SC', 'Noto Serif CJK SC', serif;
-  font-size: 20px;
-  font-weight: 700;
+}
+
+.logo svg {
+  width: 22px;
+  height: 22px;
 }
 
 .brand-text {
@@ -218,19 +236,10 @@ a:focus-visible {
   letter-spacing: 0.08em;
 }
 
-.tag {
-  font-size: 12.5px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  background: var(--panel);
-  padding: 6px 12px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
 /* ---------- 布局 ---------- */
 
 main {
+  flex: 1 0 auto;
   width: min(1480px, 100%);
   margin: 0 auto;
   padding: 24px clamp(16px, 3vw, 32px) 40px;
@@ -1436,25 +1445,43 @@ input[type='range']:focus-visible {
 /* ---------- 页脚 / 提示 ---------- */
 
 .footer {
+  flex: none;
+  width: min(1480px, 100%);
+  margin: auto auto 0;
   display: flex;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 18px clamp(16px, 4vw, 40px) 28px;
+  padding: 18px clamp(16px, 3vw, 32px) 28px;
   font-size: 12px;
   color: var(--muted);
   border-top: 1px solid var(--line);
 }
 
+.footer-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-version,
+.footer-updated {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.footer-divider {
+  color: var(--line-strong);
+}
+
 .footer-link {
   color: var(--muted);
   text-decoration: none;
-  border-bottom: 1px solid var(--line-strong);
 }
 
 .footer-link:hover {
   color: var(--ink);
-  border-bottom-color: var(--ink);
 }
 
 .toast {
@@ -1666,10 +1693,6 @@ input[type='range']:focus-visible {
 
   .row-actions button {
     padding: 6px 8px;
-  }
-
-  .tag {
-    display: none;
   }
 
   .guide-grid {

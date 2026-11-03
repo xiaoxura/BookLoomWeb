@@ -12,9 +12,14 @@
     <script>
       try {
         const saved = localStorage.getItem('txt2book.theme');
-        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+        document.documentElement.dataset.theme =
+          saved === 'light' || saved === 'dark'
+            ? saved
+            : matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
       } catch {
-        /* 本地存储不可用时跟随系统 */
+        /* 本地存储不可用时先跟随系统，主脚本会补上具体主题 */
       }
     </script>
     <meta property="og:type" content="website" />
@@ -47,7 +52,12 @@
   <body>
     <header class="topbar">
       <div class="brand">
-        <span class="logo" aria-hidden="true">书</span>
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 6.6C10.4 5.3 8.2 4.7 5.5 4.7c-.8 0-1.5.07-2 .2v13.9c.5-.13 1.2-.2 2-.2 2.7 0 4.9.6 6.5 1.9 1.6-1.3 3.8-1.9 6.5-1.9.8 0 1.5.07 2 .2V4.9c-.5-.13-1.2-.2-2-.2-2.7 0-4.9.6-6.5 1.9Z" />
+            <path d="M12 6.6v14" />
+          </svg>
+        </span>
         <div class="brand-text">
           <strong>txt2book</strong>
           <span>TXT → EPUB</span>
@@ -56,12 +66,19 @@
       <div class="top-actions">
         <button
           id="theme-toggle"
-          class="icon-button"
+          class="icon-button theme-toggle"
           type="button"
-          aria-label="主题：跟随系统"
-          title="主题：跟随系统"
+          aria-label="切换到深色主题"
+          title="切换到深色主题"
+          aria-pressed="false"
         >
-          <span id="theme-icon" aria-hidden="true">◐</span>
+          <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+          </svg>
         </button>
         <a
           id="github-link"
@@ -79,7 +96,6 @@
             />
           </svg>
         </a>
-        <div class="tag">🔒 纯本地处理，文件不出浏览器</div>
       </div>
       <div id="app-progress" class="app-progress" hidden aria-hidden="true"></div>
     </header>
@@ -354,14 +370,23 @@
     </main>
 
     <footer class="footer">
-      <span>纯前端 · 无后端 · 数据不离开设备</span>
-      <span>适合汉王 / 文石 / 掌阅 / Kobo / Kindle / 微信读书</span>
-      <a
-        class="footer-link"
-        href="https://github.com/xiaoxura/txt2book"
-        target="_blank"
-        rel="noopener noreferrer"
-      >MIT 开源 · GitHub 源码</a>
+      <span>本地优先 · 无需登录</span>
+      <span class="footer-meta">
+        <a
+          class="footer-link"
+          href="https://github.com/xiaoxura/txt2book"
+          target="_blank"
+          rel="noopener noreferrer"
+        >MIT 开源项目</a>
+        <span class="footer-divider" aria-hidden="true">·</span>
+        <span class="footer-version">v%APP_VERSION%</span>
+        <span class="footer-divider" aria-hidden="true">·</span>
+        <time
+          class="footer-updated"
+          datetime="%BUILD_ISO%"
+          title="构建于 %BUILD_TIME%（北京时间）"
+        >更新于 %BUILD_TIME%</time>
+      </span>
     </footer>
 
     <div id="cover-view" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="封面大图">
