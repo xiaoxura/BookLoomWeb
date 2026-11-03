@@ -57,6 +57,8 @@ npm run smoke      # 载入示例 → 导出 → 解包校验，截图写到 sam
 2. 新建项目：框架选 **Vite**（没有就选「其他」），构建命令 `npm run build`，输出目录 `dist`，Node 版本 20+。
 3. 不需要环境变量、不需要函数、不需要数据库，部署完直接访问域名。
 
+仓库里的 `edgeone.json` 已固定构建参数：`npm ci`、`dist`、Node `22.11.0`（EdgeOne 预装版本）。Vite 锁在 6.x，就是为了兼容这个 Node 版本；不要把 Vite 升到 8，否则要求 Node 22.12+，EdgeOne 上会构建失败。
+
 项目是纯静态的，不调用任何外部接口。`public/sw.js` 会在生产环境注册 Service Worker，第二次打开可离线使用（需要 HTTPS）。
 
 > 如果部署在子路径而不是域名根目录，需要把 `vite.config.ts` 的 `base` 改成对应路径，并同步修改 `manifest.webmanifest`、`sw.js` 里的 `/`。
