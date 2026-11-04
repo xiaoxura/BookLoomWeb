@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>更新日志 · txt2book</title>
+    <meta
+      name="description"
+      content="txt2book 的版本更新记录：TXT / EPUB / DOCX 导入与互转、章节识别与校对、书架、繁简转换、封面与排版、批量转换等功能的变更历史。"
+    />
+    <meta name="theme-color" content="#f4efe4" />
+    <script>
+      try {
+        const saved = localStorage.getItem('txt2book.theme');
+        document.documentElement.dataset.theme =
+          saved === 'light' || saved === 'dark'
+            ? saved
+            : matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+      } catch {
+        /* 本地存储不可用时先跟随系统，脚本会补上具体主题 */
+      }
+    </script>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="返回 txt2book 首页">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 6.6C10.4 5.3 8.2 4.7 5.5 4.7c-.8 0-1.5.07-2 .2v13.9c.5-.13 1.2-.2 2-.2 2.7 0 4.9.6 6.5 1.9 1.6-1.3 3.8-1.9 6.5-1.9.8 0 1.5.07 2 .2V4.9c-.5-.13-1.2-.2-2-.2-2.7 0-4.9.6-6.5 1.9Z" />
+            <path d="M12 6.6v14" />
+          </svg>
+        </span>
+        <div class="brand-text">
+          <strong>txt2book</strong>
+          <span>更新日志</span>
+        </div>
+      </a>
+      <div class="top-actions">
+        <a class="icon-button" href="/" aria-label="返回首页" title="返回首页">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 11.5 12 4.5l8 7" />
+            <path d="M6.5 10.5v9h11v-9" />
+          </svg>
+        </a>
+        <button
+          id="notice-btn"
+          class="icon-button notice-button"
+          type="button"
+          aria-label="查看公告"
+          title="公告"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8.4a6 6 0 0 0-12 0c0 6.6-2.6 8.6-2.6 8.6h17.2S18 15 18 8.4Z" />
+            <path d="M13.7 20.3a2 2 0 0 1-3.4 0" />
+          </svg>
+          <span class="notice-dot" aria-hidden="true"></span>
+        </button>
+        <button
+          id="theme-toggle"
+          class="icon-button theme-toggle"
+          type="button"
+          aria-label="切换到深色主题"
+          title="切换到深色主题"
+          aria-pressed="false"
+        >
+          <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+          </svg>
+        </button>
+        <a
+          class="icon-button"
+          href="https://github.com/xiaoxura/txt2book"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="在 GitHub 查看源码（MIT 开源）"
+          title="GitHub · MIT 开源"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+            />
+          </svg>
+        </a>
+      </div>
+    </header>
+
+    <main class="changelog-page">
+      <header class="changelog-hero">
+        <p class="changelog-kicker">Changelog</p>
+        <h1>更新日志</h1>
+        <p class="changelog-lead">
+          这个工具的每次变化都记在这里。当前版本 <strong>v%APP_VERSION%</strong>。
+        </p>
+      </header>
+
+      <ol class="changelog-list">
+        <li class="changelog-entry">
+          <div class="changelog-rail" aria-hidden="true"><span></span></div>
+          <div class="changelog-content">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.2.0</span>
+              <time datetime="2026-11-04">2026-11-04</time>
+            </div>
+            <h2>元数据、内嵌目录与封面编辑器</h2>
+            <p>把「书做得更像一本书」的三件事补齐，草稿和旧版本保持兼容。</p>
+            <ul class="changelog-items">
+              <li><b>书籍元数据</b>：在书名 / 作者之外可填写简介、系列、出版社、标签和出版日期；EPUB 3 会写进 <code>dc:description</code>、<code>dc:publisher</code>、<code>dc:subject</code>、<code>dc:date</code> 和系列字段，EPUB 2 保留基础字段。导入 EPUB 时也会读取这些信息，兼容 calibre 系列列。</li>
+              <li><b>内嵌目录页</b>：EPUB 3 / EPUB 2 都在封面之后、正文之前生成可点击的 <code>toc.xhtml</code>，卷 / 章层级与 nav / NCX 一致；重新导入时不会把目录页当成章节。</li>
+              <li><b>封面编辑器</b>：竖排书名 / 色块两种模板上可切换原木、墨夜、深海、酒红、松林配色，调整标题字号和作者位置，右侧实时预览；参数随草稿保存，导出的 JPEG 与预览一致。</li>
+              <li><b>兼容性</b>：旧草稿的 <code>coverOptions</code> 缺失时自动补默认值；M1–M3 的书架、转换和导出链路不变。</li>
+            </ul>
+          </div>
+        </li>
+        <li class="changelog-entry">
+          <div class="changelog-rail" aria-hidden="true"><span></span></div>
+          <div class="changelog-content">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.1.0</span>
+              <time datetime="2026-11-04">2026-11-04</time>
+            </div>
+            <h2>校对、书架与格式扩展</h2>
+            <p>第一个功能版本：把「改得动、找得到、导得出」补齐。</p>
+            <ul class="changelog-items">
+              <li><b>通用撤销 / 重做</b>：改标题、分章、合并、删除、升降级、替换和重编号都进历史，最多 50 步；支持 <code>Ctrl/Cmd+Z</code>、<code>Shift+Ctrl/Cmd+Z</code>，目录面板也有按钮。</li>
+              <li><b>批量替换 / 清洗</b>：按标题 / 正文 / 全部范围查找替换，支持正则、大小写、命中预览和前后文；执行前自动记录，可一次撤销。</li>
+              <li><b>全书体检 + 章号校验</b>：检查缺号、重复、空章、标题重复、异常长短、卷内无章和广告残留；可按顺序重编号，保留中文 / 阿拉伯数字风格。</li>
+              <li><b>多草稿书架</b>：每本书的草稿、原文和字体分开存进 IndexedDB；顶栏书架可打开、改名、删除，并显示本地占用；旧版单草稿会自动迁移。</li>
+              <li><b>DOCX 导入</b>：按 Heading 1 / 2（含中文「标题 1 / 2」和大纲级别）还原卷章；无标题样式时退化为单章并提示。</li>
+              <li><b>DOCX / 单文件 HTML 导出</b>：DOCX 用 Word 标题样式，HTML 内联 CSS 且目录可跳转；单本和批量都支持。</li>
+              <li><b>繁简转换</b>：导入时可选保持原样 / 转简体 / 转繁体，章节标题和正文一起转换；opencc-js 词典按需加载，原文不改。</li>
+              <li><b>快捷键</b>：<code>↑/↓</code> 或 <code>J/K</code> 切章、<code>/</code> 聚焦搜索、<code>Ctrl/Cmd+S</code> 导出、<code>Esc</code> 关闭浮层。</li>
+            </ul>
+          </div>
+        </li>
+        <li class="changelog-entry">
+          <div class="changelog-rail" aria-hidden="true"><span></span></div>
+          <div class="changelog-content">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.0.2</span>
+              <time datetime="2026-11-04">2026-11-04</time>
+            </div>
+            <h2>排版与识别的增强</h2>
+            <p>参照 kaf-cli 的成熟做法补了一轮细节，重点是让导出的书更像一本书。</p>
+            <ul class="changelog-items">
+              <li><b>章号单独一行</b>：开启后「第1章」和标题分两行显示，长标题更清爽。</li>
+              <li><b>附加 CSS</b>：可以往 EPUB 样式表末尾追加自己的规则，解决不同阅读器的缩进、字距差异。</li>
+              <li><b>嵌入字体</b>：上传 ttf / otf / woff / woff2，导出时打包进 EPUB 并在正文使用；字体单独存本地，不会拖慢草稿保存。</li>
+              <li><b>色块封面</b>：新增 Orly 风格的纯色封面，颜色由书名决定，完全本地生成。</li>
+              <li><b>识别更稳</b>：「第X部分 / 部门 / 部队」不再被当成卷；补上「完本感言」「最终章」和英文 Section / Page。</li>
+              <li><b>文件名解析</b>：<code>《书名》（校对版全本）作者：远瞳.txt</code> 能直接拆出书名和作者。</li>
+              <li><b>更多预设</b>：新增裸数字标题（123），数字标题预设也接受「12、」。</li>
+              <li><b>页面不再整体滚动</b>：工作区铺满窗口，章节、预览、设置各自滚动；落地页和更新日志也只在内容区滚动，页头页脚常驻。</li>
+            </ul>
+          </div>
+        </li>
+        <li class="changelog-entry">
+          <div class="changelog-rail" aria-hidden="true"><span></span></div>
+          <div class="changelog-content">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.0.1</span>
+              <time datetime="2026-11-04">2026-11-04</time>
+            </div>
+            <h2>第一个版本</h2>
+            <p>
+              从「只能把 TXT 变成 EPUB」开始，到现在两边都能走。第一版把基础能力一次搭齐：
+            </p>
+            <ul class="changelog-items">
+              <li><b>TXT ⇄ EPUB</b>：TXT 可以导出 EPUB 3 / EPUB 2；EPUB 可以拆回 TXT、Markdown，或重新排版后再导出 EPUB。</li>
+              <li><b>编码识别</b>：自动判断 UTF-8、GBK / GB18030、Big5、UTF-16，识别不准时可以手动切换。</li>
+              <li><b>章节识别</b>：按「标题形态 + 密度」打分分章，支持卷 / 章两级、目录页剔除、空行分章兜底；「第1章我的天呐」会自动补成「第1章 我的天呐」。</li>
+              <li><b>人工校对</b>：改标题、合并、删除、升降级，从任意段落分章或设为标题，支持搜索和输入章号跳转。</li>
+              <li><b>漏章诊断</b>：自动列出像标题却没被识别的段落，一键修正。</li>
+              <li><b>EPUB 导入</b>：按 spine 顺序拆章节，标题和层级优先取 nav / NCX，没有目录时用正文标题兜底；封面、书名、作者一并带出来，带 DRM 的书会直接报错。</li>
+              <li><b>排版与封面</b>：行高、段距、首行缩进、字体、两端对齐可调；可以自动生成竖排书名封面，也可以上传自己的图。</li>
+              <li><b>批量与草稿</b>：一次拖入多本 TXT / EPUB 批量转换；解析结果和编辑自动存进 IndexedDB，刷新后接着改。</li>
+              <li><b>规则与隐私</b>：内置站点预设，也能手写 JSON 规则；所有转换都在浏览器里完成，文件不上传，断网可用。</li>
+            </ul>
+          </div>
+        </li>
+      </ol>
+
+      <div class="changelog-cta">
+        <a class="primary" href="/">回到首页，转一本书</a>
+        <a class="ghost" href="https://github.com/xiaoxura/txt2book" target="_blank" rel="noopener noreferrer">在 GitHub 看源码</a>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>本地优先 · 无需登录</span>
+      <span class="footer-meta">
+        <a
+          class="footer-link"
+          href="https://github.com/xiaoxura/txt2book"
+          target="_blank"
+          rel="noopener noreferrer"
+        >MIT 开源项目</a>
+      </span>
+    </footer>
+
+    <script type="module" src="/src/changelog.ts"></script>
+  </body>
+</html>

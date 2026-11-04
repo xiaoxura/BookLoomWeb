@@ -3,7 +3,7 @@ import path from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { chaptersFromText } from '../src/core/chapters';
-import { buildEpub } from '../src/core/epub';
+import { buildEpub } from '../src/core/export/epub';
 import type { Chapter, LayoutOptions } from '../src/types';
 
 const LAYOUT: LayoutOptions = {
@@ -114,7 +114,64 @@ describe('buildEpub', () => {
     expect((nav.match(/<li>/g) ?? []).length).toBe(1);
     const opf = strFromU8(extracted['OEBPS/content.opf']);
     const spineRefs = opf.match(/<itemref /g) ?? [];
-    expect(spineRefs.length).toBe(docs.length);
+    expect(spineRefs.length).toBe(docs.length + 1); // 额外一个内嵌目录页
+  });
+
+  it('扩展元数据写进 OPF，系列字段只出现在 EPUB 3', () => {
+    const meta = {
+      title: '雾港灯塔',
+      author: '林间',
+      language: 'zh-CN',
+      description: '一座灯塔 & 一封<没有>寄出的信。',
+      series: '雾港三部曲',
+      publisher: '潮声出版社',
+      tags: ['悬疑', '海洋', '海洋'],
+      publishedAt: '2026-01-02',
+    };
+    const chapters: Chapter[] = [
+      { id: 'a', title: '第一章 守塔人', level: 2, paragraphs: ['正文。'] },
+    ];
+    const epub3 = unzipSync(buildEpub({ chapters, meta, layout: LAYOUT, cover: null }));
+    const opf3 = strFromU8(epub3['OEBPS/content.opf']);
+    expect(opf3).toContain('<dc:description>一座灯塔 &amp; 一封&lt;没有&gt;寄出的信。</dc:description>');
+    expect(opf3).toContain('<dc:publisher>潮声出版社</dc:publisher>');
+    expect(opf3).toContain('<dc:date>2026-01-02</dc:date>');
+    expect((opf3.match(/<dc:subject>/g) ?? []).length).toBe(2);
+    expect(opf3).toContain('<dc:subject>悬疑</dc:subject>');
+    expect(opf3).toContain('<dc:subject>海洋</dc:subject>');
+    expect(opf3).toContain('property="belongs-to-collection" id="series">雾港三部曲</meta>');
+    expect(opf3).toContain('property="collection-type">series</meta>');
+
+    const epub2 = unzipSync(
+      buildEpub({ chapters, meta, layout: LAYOUT, cover: null, version: 2 }),
+    );
+    const opf2 = strFromU8(epub2['OEBPS/content.opf']);
+    expect(opf2).toContain('<dc:description>');
+    expect(opf2).toContain('<dc:publisher>潮声出版社</dc:publisher>');
+    expect(opf2).toContain('<dc:date>2026-01-02</dc:date>');
+    expect(opf2).not.toContain('belongs-to-collection');
+  });
+
+  it('内嵌目录页在封面之后、正文之前，EPUB 3 / 2 都有', () => {
+    const chapters = sampleChapters();
+    const cover = { data: new Uint8Array(Buffer.from(PIXEL_JPEG, 'base64')), mime: 'image/jpeg' };
+    for (const version of [3, 2] as const) {
+      const entries = unzipSync(buildEpub({ chapters, meta: { title: '雾港灯塔', author: '林间', language: 'zh-CN' }, layout: LAYOUT, cover, version }));
+      const opf = strFromU8(entries['OEBPS/content.opf']);
+      expect(opf).toContain('id="toc-page" href="text/toc.xhtml"');
+      expect(opf).toContain('<reference type="toc" title="目录" href="text/toc.xhtml"/>');
+      const spine = opf.match(/<spine[^>]*>([\s\S]*?)<\/spine>/)?.[1] ?? '';
+      const order = [...spine.matchAll(/idref="([^"]+)"/g)].map((match) => match[1]);
+      expect(order[0]).toBe('cover');
+      expect(order[1]).toBe('toc-page');
+
+      const toc = strFromU8(entries['OEBPS/text/toc.xhtml']);
+      expect(toc).toContain('<h1>目录</h1>');
+      expect(toc).toContain('href="c0002-1.xhtml"');
+      expect(toc).toContain('第一卷 潮声');
+      expect(toc).toContain('第一章 守塔人');
+      expect(toc).not.toContain('epub:type');
+    }
   });
 
   it('可以输出 EPUB 2 兼容格式', () => {
@@ -140,6 +197,44 @@ describe('buildEpub', () => {
     expect(doc).not.toContain('xmlns:epub');
 
     fs.writeFileSync(path.join('samples', 'demo-epub2.epub'), output);
+  });
+
+  it('章号单独一行、自定义 CSS、字体嵌入都写进包里', () => {
+    const out = buildEpub({
+      chapters: [{ id: 'a', title: '第一章 守塔人', level: 2, paragraphs: ['正文。'] }],
+      meta: { title: '雾港灯塔', author: '林间', language: 'zh-CN' },
+      layout: {
+        ...LAYOUT,
+        separateChapterNumber: true,
+        customCss: '.my-rule { color: red; }',
+      },
+      cover: null,
+      font: { name: 'SourceHanSerif.ttf', data: new Uint8Array([0, 1, 2, 3]), mime: 'font/ttf' },
+    });
+    const entries = unzipSync(out);
+    const xhtml = read(entries, 'OEBPS/text/c0001-1.xhtml');
+    expect(xhtml).toContain('<span class="chapter-number">第一章</span>守塔人');
+
+    const css = read(entries, 'OEBPS/styles/style.css');
+    expect(css).toContain('@font-face');
+    expect(css).toContain('url("../fonts/embedded.ttf")');
+    expect(css).toContain('.my-rule { color: red; }');
+
+    const opf = read(entries, 'OEBPS/content.opf');
+    expect(opf).toContain('href="fonts/embedded.ttf" media-type="font/ttf"');
+    expect(entries['OEBPS/fonts/embedded.ttf']).toEqual(new Uint8Array([0, 1, 2, 3]));
+  });
+
+  it('不开启章号分离时标题保持一行', () => {
+    const out = buildEpub({
+      chapters: [{ id: 'a', title: '第一章 守塔人', level: 2, paragraphs: ['正文。'] }],
+      meta: { title: '雾港灯塔', author: '林间', language: 'zh-CN' },
+      layout: LAYOUT,
+      cover: null,
+    });
+    const xhtml = read(unzipSync(out), 'OEBPS/text/c0001-1.xhtml');
+    expect(xhtml).not.toContain('chapter-number');
+    expect(xhtml).toContain('第一章 守塔人');
   });
 
   it('生成 samples/demo.epub 便于人工检查', () => {

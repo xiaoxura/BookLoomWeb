@@ -1,4 +1,4 @@
-import type { BookMeta, Chapter, CoverData, LayoutOptions, ParseOptions, ParseResult } from '../types';
+import type { BookMeta, Chapter, CoverData, FontData, LayoutOptions, ParseOptions, ParseResult } from '../types';
 
 export type ToWorker =
   | {
@@ -26,6 +26,7 @@ export type ToWorker =
       meta: BookMeta;
       layout: LayoutOptions;
       cover: CoverData | null;
+      font: FontData | null;
       version: 2 | 3;
     }
   | {

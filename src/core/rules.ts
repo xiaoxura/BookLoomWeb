@@ -34,13 +34,18 @@ export const RULE_PRESETS: RuleSpec[] = [
   },
   {
     id: 'numbered',
-    name: '数字标题（1. 标题）',
-    chapter: '^\\s*\\d{1,4}\\s*[、.．:：]\\s*\\S.{0,40}$',
+    name: '数字标题（1. 标题 / 12、）',
+    chapter: '^\\s*\\d{1,4}\\s*[、.．:：]\\s*.{0,40}$',
+  },
+  {
+    id: 'bare-number',
+    name: '裸数字标题（123）',
+    chapter: '^\\s*\\d{1,4}\\s*$',
   },
   {
     id: 'english',
-    name: '英文 Chapter',
-    chapter: '^(?:chapter|part|volume)\\s+[0-9ivxlcdm]+\\b.{0,60}$',
+    name: '英文 Chapter / Section',
+    chapter: '^(?:chapter|part|volume|section|page)\\s+[0-9ivxlcdm]+\\b.{0,60}$',
     volume: '^(?:part|volume)\\s+[0-9ivxlcdm]+\\b.{0,40}$',
   },
 ];

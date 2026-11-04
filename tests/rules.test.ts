@@ -23,6 +23,19 @@ describe('识别规则', () => {
     expect(withoutRules.chapters).toHaveLength(1);
   });
 
+  it('裸数字和英文 Section 预设可用', () => {
+    const bare = compileRules(getPreset('bare-number'));
+    expect(bare?.chapter?.test('123')).toBe(true);
+    expect(bare?.chapter?.test('第1章')).toBe(false);
+    const bareText = '12\n正文一。\n13\n正文二。';
+    const parsed = chaptersFromText(bareText, { filterAds: true, rules: bare });
+    expect(parsed.chapters.map((c) => c.title)).toEqual(['12', '13']);
+
+    const english = compileRules(getPreset('english'));
+    expect(english?.chapter?.test('Section 2 尾声')).toBe(true);
+    expect(english?.chapter?.test('Page 9')).toBe(true);
+  });
+
   it('自定义 drop 规则会整行删除', () => {
     const spec: RuleSpec = { name: '测试', chapter: '^第\\d+章', drop: ['本站域名'] };
     const text = '第1章 开始\n正文一。\n本站域名 example.com 请访问\n正文二。';

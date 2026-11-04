@@ -158,7 +158,8 @@ const STRONG_AD_PATTERNS: RegExp[] = [
   /^[『』「」《》〈〉【】（）()[\]]$/,
 ];
 
-function isAdLine(line: string, extra: RegExp[] = []): boolean {
+/** 判断一行是否像站点广告 / 水印；体检查残留时复用 */
+export function isAdLine(line: string, extra: RegExp[] = []): boolean {
   const t = line.trim();
   if (!t) return false;
   if (extra.some((re) => re.test(t))) return true;

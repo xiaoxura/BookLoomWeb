@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>txt2book — 把 TXT 变成好读的 EPUB</title>
+    <title>txt2book — TXT / EPUB / DOCX 互转与排版</title>
     <meta
       name="description"
-      content="纯浏览器本地运行的 TXT 转 EPUB 工具：自动识别编码与章节、人工校对、封面生成、排版调节。文件不会上传到任何服务器。"
+      content="纯浏览器本地运行的电子书转换工具：TXT / EPUB / DOCX 导入与互转，自动识别编码与章节、人工校对、封面生成、排版调节。文件不会上传到任何服务器。"
     />
     <meta name="theme-color" content="#f4efe4" />
     <script>
@@ -24,15 +24,15 @@
     </script>
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="txt2book — 把 TXT 变成好读的 EPUB" />
+    <meta property="og:title" content="txt2book — TXT / EPUB / DOCX 互转与排版" />
     <meta
       property="og:description"
-      content="纯本地 TXT 转 EPUB：自动识别编码与章节、人工校对、封面生成、EPUB 3 / 2 导出。文件不上传。"
+      content="纯本地电子书转换：TXT 与 EPUB 互转，自动分章、人工校对、封面与 EPUB 3 / 2 导出。文件不上传。"
     />
     <meta property="og:image" content="/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="txt2book — 把 TXT 变成好读的 EPUB" />
-    <meta name="twitter:description" content="纯本地 TXT 转 EPUB，自动分章、可校对、支持 EPUB 3 / 2。" />
+    <meta name="twitter:title" content="txt2book — TXT / EPUB / DOCX 互转与排版" />
+    <meta name="twitter:description" content="纯本地 TXT / EPUB / DOCX 导入与互转，自动分章、可校对、支持 EPUB 3 / 2 与 TXT / Markdown 导出。" />
     <meta name="twitter:image" content="/og.png" />
     <script type="application/ld+json">
       {
@@ -41,11 +41,12 @@
         "name": "txt2book",
         "applicationCategory": "UtilitiesApplication",
         "operatingSystem": "Any",
-        "description": "纯浏览器本地运行的 TXT 转 EPUB 工具，支持自动识别编码与章节、人工校对、封面生成与 EPUB 3 / 2 导出。",
+        "description": "纯浏览器本地运行的电子书转换工具：TXT / EPUB / DOCX 导入，自动识别编码与章节、人工校对、封面生成与多格式导出。",
         "offers": { "@type": "Offer", "price": "0" },
         "isAccessibleForFree": true
       }
     </script>
+    <link rel="stylesheet" href="/src/styles.css" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   </head>
@@ -53,17 +54,55 @@
     <header class="topbar">
       <div class="brand">
         <span class="logo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 6.6C10.4 5.3 8.2 4.7 5.5 4.7c-.8 0-1.5.07-2 .2v13.9c.5-.13 1.2-.2 2-.2 2.7 0 4.9.6 6.5 1.9 1.6-1.3 3.8-1.9 6.5-1.9.8 0 1.5.07 2 .2V4.9c-.5-.13-1.2-.2-2-.2-2.7 0-4.9.6-6.5 1.9Z" />
             <path d="M12 6.6v14" />
           </svg>
         </span>
         <div class="brand-text">
           <strong>txt2book</strong>
-          <span>TXT → EPUB</span>
+          <span>TXT ⇄ EPUB</span>
         </div>
       </div>
       <div class="top-actions">
+        <button
+          id="shelf-btn"
+          class="icon-button"
+          type="button"
+          aria-label="书架"
+          title="书架"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 5.2h4.4v14H4zM9.4 5.2H14v14H9.4z" />
+            <path d="M15.1 6.4l4.3-1.2 3.5 13.5-4.3 1.2z" />
+          </svg>
+        </button>
+        <a
+          id="changelog-link"
+          class="icon-button"
+          href="/changelog.html"
+          aria-label="更新日志"
+          title="更新日志"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 3.5h6.8L17.5 7v13.5H7z" />
+            <path d="M13.6 3.7v3.6h3.6" />
+            <path d="M9.7 11h4.8M9.7 14.2h4.8M9.7 17.3h3.1" />
+          </svg>
+        </a>
+        <button
+          id="notice-btn"
+          class="icon-button notice-button"
+          type="button"
+          aria-label="查看更新公告"
+          title="更新公告"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8.4a6 6 0 0 0-12 0c0 6.6-2.6 8.6-2.6 8.6h17.2S18 15 18 8.4Z" />
+            <path d="M13.7 20.3a2 2 0 0 1-3.4 0" />
+          </svg>
+          <span class="notice-dot" aria-hidden="true"></span>
+        </button>
         <button
           id="theme-toggle"
           class="icon-button theme-toggle"
@@ -72,11 +111,11 @@
           title="切换到深色主题"
           aria-pressed="false"
         >
-          <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
             <circle cx="12" cy="12" r="4" />
             <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
           </svg>
-          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
           </svg>
         </button>
@@ -89,7 +128,7 @@
           aria-label="在 GitHub 查看源码（MIT 开源）"
           title="GitHub · MIT 开源"
         >
-          <svg viewBox="0 0 16 16" width="19" height="19" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path
               fill="currentColor"
               d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
@@ -102,11 +141,11 @@
 
     <main>
       <section id="drop-zone" class="drop-zone">
-        <input id="file-input" type="file" accept=".txt,text/plain" multiple hidden />
+        <input id="file-input" type="file" accept=".txt,.epub,.docx,text/plain,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden />
         <div class="drop-inner">
           <div class="drop-icon" aria-hidden="true">📖</div>
-          <h2>把 TXT 拖进来</h2>
-          <p class="drop-sub">自动识别 UTF-8 / GBK / GB18030 / Big5，并拆好章节；一次拖多本可批量转换</p>
+          <h2>把 TXT 或 EPUB 拖进来</h2>
+          <p class="drop-sub">TXT 自动识别 UTF-8 / GBK / GB18030 / Big5；EPUB 直接读回章节、目录层级与封面；DOCX 按标题样式还原卷章；一次拖多本可批量转换</p>
           <div class="drop-actions">
             <button id="pick-file" class="primary" type="button">选择文件</button>
             <button id="load-sample" class="ghost" type="button">试试示例</button>
@@ -167,9 +206,31 @@
         </div>
         <ul id="batch-list" class="batch-list"></ul>
         <div class="batch-actions">
+          <select id="batch-format" class="batch-format" aria-label="批量导出格式">
+            <option value="epub">EPUB</option>
+            <option value="docx">DOCX</option>
+            <option value="html">HTML</option>
+            <option value="txt">TXT</option>
+            <option value="md">Markdown</option>
+          </select>
           <button id="batch-download" class="primary" type="button" disabled>下载 ZIP</button>
           <p id="batch-status" class="hint">准备中…</p>
         </div>
+      </section>
+
+      <section id="shelf" class="shelf panel" hidden>
+        <div class="panel-head shelf-head">
+          <div>
+            <h2>书架</h2>
+            <p id="shelf-storage" class="muted">本地草稿</p>
+          </div>
+          <div class="shelf-actions">
+            <button id="shelf-import" class="primary small" type="button">导入新书</button>
+            <button id="shelf-close" class="ghost small" type="button" hidden>返回编辑</button>
+          </div>
+        </div>
+        <p id="shelf-empty" class="list-empty" hidden>书架还是空的，导入一本 TXT / EPUB / DOCX 开始。</p>
+        <div id="shelf-list" class="shelf-list" role="list"></div>
       </section>
 
       <section id="workspace" class="workspace" hidden data-mobile-view="chapters">
@@ -185,7 +246,11 @@
               <h2>章节</h2>
               <p id="stats" class="muted">—</p>
             </div>
-            <button id="change-file" class="ghost small" type="button">换一本</button>
+            <div class="panel-head-actions">
+              <button id="undo-btn" class="ghost small" type="button" title="撤销（Ctrl+Z）" disabled>↶</button>
+              <button id="redo-btn" class="ghost small" type="button" title="重做（Shift+Ctrl+Z）" disabled>↷</button>
+              <button id="change-file" class="ghost small" type="button">换一本</button>
+            </div>
           </div>
           <input
             id="chapter-search"
@@ -205,6 +270,14 @@
               <button id="diag-dismiss" class="diag-dismiss" type="button" title="忽略这些提示">×</button>
             </div>
             <div id="diag-list" class="diag-list"></div>
+            <div class="diag-actions">
+              <button
+                id="audit-renumber"
+                class="ghost small"
+                type="button"
+                title="按顺序重编号：只改章号数字，保留中文 / 阿拉伯数字风格"
+              >按顺序重编号</button>
+            </div>
           </div>
           <div id="chapter-list" class="chapter-list" role="list"></div>
         </aside>
@@ -248,6 +321,29 @@
                 <span>作者</span>
                 <input id="meta-author" type="text" placeholder="佚名" />
               </label>
+              <details class="meta-more">
+                <summary>更多信息（简介 / 系列 / 出版）</summary>
+                <label class="field column">
+                  <span>简介</span>
+                  <textarea id="meta-description" rows="3" placeholder="会写进 EPUB 的 dc:description"></textarea>
+                </label>
+                <label class="field">
+                  <span>系列</span>
+                  <input id="meta-series" type="text" placeholder="例如：雾港三部曲" />
+                </label>
+                <label class="field">
+                  <span>出版社</span>
+                  <input id="meta-publisher" type="text" placeholder="选填" />
+                </label>
+                <label class="field">
+                  <span>标签</span>
+                  <input id="meta-tags" type="text" placeholder="用逗号分隔，会写进 dc:subject" />
+                </label>
+                <label class="field">
+                  <span>出版日期</span>
+                  <input id="meta-published" type="date" />
+                </label>
+              </details>
               <div class="cover-row">
                 <button
                   id="cover-thumb"
@@ -265,6 +361,46 @@
                   <input id="cover-input" type="file" accept="image/*" hidden />
                 </div>
               </div>
+              <details class="cover-editor">
+                <summary>封面编辑（配色 / 字号 / 作者位置）</summary>
+                <div class="cover-editor-body">
+                  <canvas id="cover-preview" width="180" height="270" aria-label="封面实时预览"></canvas>
+                  <div class="cover-fields">
+                    <label class="field">
+                      <span>版式</span>
+                      <select id="cover-style">
+                        <option value="vertical">竖排书名</option>
+                        <option value="block">色块（Orly 风）</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>配色</span>
+                      <select id="cover-palette">
+                        <option value="auto">跟随模板</option>
+                        <option value="sand">原木</option>
+                        <option value="ink">墨夜</option>
+                        <option value="sea">深海</option>
+                        <option value="wine">酒红</option>
+                        <option value="forest">松林</option>
+                      </select>
+                    </label>
+                    <label class="field range">
+                      <span>标题字号 <b id="cover-title-scale-value">100%</b></span>
+                      <input id="cover-title-scale" type="range" min="0.8" max="1.3" step="0.05" value="1" />
+                    </label>
+                    <label class="field">
+                      <span>作者位置</span>
+                      <select id="cover-author-position">
+                        <option value="bottom">下方</option>
+                        <option value="top">上方</option>
+                        <option value="hidden">隐藏</option>
+                      </select>
+                    </label>
+                    <button id="cover-reset-options" class="ghost small" type="button">恢复默认参数</button>
+                    <p class="hint">调整后会替换上传的封面，按模板重新生成。</p>
+                  </div>
+                </div>
+              </details>
             </div>
 
             <div class="group">
@@ -280,6 +416,16 @@
                   <option value="utf-16be">UTF-16 BE</option>
                 </select>
               </label>
+              <p id="encoding-note" class="hint" hidden>EPUB 里的文字自带编码，不需要再选</p>
+              <label class="field">
+                <span>繁简转换</span>
+                <select id="convert">
+                  <option value="none">保持原样</option>
+                  <option value="simplified">转为简体</option>
+                  <option value="traditional">转为繁体</option>
+                </select>
+              </label>
+              <p class="hint">只改解析结果，原始文件保持原样；切换后立即重新应用</p>
               <label class="check">
                 <input id="filter-ads" type="checkbox" checked />
                 过滤广告 / 水印行
@@ -299,8 +445,9 @@
                     <option value="auto">自动识别（推荐）</option>
                     <option value="ixdzs">爱下电子书</option>
                     <option value="biquge">笔趣阁系</option>
-                    <option value="numbered">数字标题（1. 标题）</option>
-                    <option value="english">英文 Chapter</option>
+                    <option value="numbered">数字标题（1. 标题 / 12、）</option>
+                    <option value="bare-number">裸数字标题（123）</option>
+                    <option value="english">英文 Chapter / Section</option>
                     <option value="custom">自定义…</option>
                   </select>
                 </label>
@@ -315,6 +462,47 @@
                   </div>
                   <p id="rule-error" class="hint error" hidden></p>
                 </details>
+              </div>
+            </details>
+
+            <details id="group-clean" class="group fold">
+              <summary class="fold-head">
+                <h3>批量替换 / 清洗</h3>
+                <span class="fold-caret" aria-hidden="true">▸</span>
+              </summary>
+              <div class="fold-body">
+                <label class="field">
+                  <span>查找</span>
+                  <input id="replace-find" type="text" maxlength="200" placeholder="要查找的文字；勾选正则可写表达式" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>替换为</span>
+                  <input id="replace-with" type="text" maxlength="500" placeholder="留空表示删除命中内容" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>范围</span>
+                  <select id="replace-scope">
+                    <option value="all">标题 + 正文</option>
+                    <option value="body">仅正文</option>
+                    <option value="title">仅标题</option>
+                  </select>
+                </label>
+                <div class="replace-flags">
+                  <label class="check">
+                    <input id="replace-regex" type="checkbox" />
+                    正则
+                  </label>
+                  <label class="check">
+                    <input id="replace-case" type="checkbox" />
+                    区分大小写
+                  </label>
+                </div>
+                <div class="replace-actions">
+                  <button id="replace-preview" class="ghost small" type="button">预览命中</button>
+                  <button id="replace-apply" class="ghost small" type="button">执行替换</button>
+                </div>
+                <p id="replace-status" class="hint">替换前会自动记录一步，可撤销</p>
+                <div id="replace-results" class="replace-results" hidden></div>
               </div>
             </details>
 
@@ -344,17 +532,44 @@
                 <input id="justify" type="checkbox" checked />
                 两端对齐
               </label>
+              <label class="check">
+                <input id="separate-number" type="checkbox" />
+                章号单独一行（第1章 / 标题）
+              </label>
+              <div class="field">
+                <span>嵌入字体</span>
+                <div class="font-actions">
+                  <button id="font-upload" class="ghost small" type="button">选择字体</button>
+                  <button id="font-remove" class="ghost small" type="button" hidden>移除</button>
+                </div>
+              </div>
+              <input id="font-input" type="file" accept=".ttf,.otf,.woff,.woff2" hidden />
+              <p id="font-status" class="hint">可选，字体文件会一起打进 EPUB</p>
+              <label class="field column">
+                <span>附加 CSS</span>
+                <textarea id="custom-css" rows="3" spellcheck="false" placeholder="例如：p { line-height: 1.9; }"></textarea>
+              </label>
             </div>
 
             <div class="group">
               <h3>本地草稿</h3>
               <p id="draft-status" class="hint">改动会自动保存在这台设备上，刷新后可继续</p>
-              <button id="clear-draft" class="ghost small" type="button">清除草稿</button>
+              <button id="clear-draft" class="ghost small" type="button">从书架删除这本书</button>
             </div>
           </div>
 
           <div class="group export-group">
             <label class="field">
+              <span>导出格式</span>
+              <select id="export-format">
+                <option value="epub">EPUB（电子书）</option>
+                <option value="docx">DOCX（Word）</option>
+                <option value="html">HTML（单文件）</option>
+                <option value="txt">TXT（纯文本）</option>
+                <option value="md">Markdown</option>
+              </select>
+            </label>
+            <label id="epub-version-field" class="field">
               <span>EPUB 版本</span>
               <select id="epub-version">
                 <option value="3">EPUB 3（推荐）</option>
@@ -378,14 +593,6 @@
           target="_blank"
           rel="noopener noreferrer"
         >MIT 开源项目</a>
-        <span class="footer-divider" aria-hidden="true">·</span>
-        <span class="footer-version">v%APP_VERSION%</span>
-        <span class="footer-divider" aria-hidden="true">·</span>
-        <time
-          class="footer-updated"
-          datetime="%BUILD_ISO%"
-          title="构建于 %BUILD_TIME%（北京时间）"
-        >更新于 %BUILD_TIME%</time>
       </span>
     </footer>
 
@@ -394,6 +601,7 @@
       <img id="cover-view-img" alt="封面大图" />
       <p class="lightbox-hint">点击空白处或按 Esc 关闭</p>
     </div>
+
 
     <div id="toast" class="toast" hidden></div>
     <noscript>这个工具需要启用 JavaScript。</noscript>

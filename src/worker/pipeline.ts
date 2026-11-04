@@ -1,6 +1,8 @@
 import { zipSync } from 'fflate';
-import { chaptersFromText, countChars, guessAuthor, guessTitle, guessTitleFromText } from '../core/chapters';
-import { buildEpub } from '../core/epub';
+import { chaptersFromText, countChars, guessAuthor, guessTitle, guessTitleFromText, parseFilenameInfo } from '../core/chapters';
+import { buildEpub } from '../core/export/epub';
+import { detectFormat, importDocxFile, importEpubFile } from '../core/import';
+import { convertParseResult, loadConverter } from '../core/convert';
 import { compileRules } from '../core/rules';
 import { decodeBuffer, normalizeText } from '../core/text';
 import type { ParseOptions, ParseResult } from '../types';
@@ -20,8 +22,32 @@ function post(message: FromWorker, transfer?: Transferable[]) {
   ctx.postMessage(message, transfer);
 }
 
-function runParse(id: number, options: ParseOptions) {
+async function finishParse(id: number, result: ParseResult, options: ParseOptions): Promise<void> {
+  if (options.convert && options.convert !== 'none') {
+    post({ id, type: 'progress', phase: '正在转换繁简…' });
+    const converter = await loadConverter(options.convert);
+    result = convertParseResult(result, converter);
+  }
+  post({ id, type: 'parsed', result });
+}
+
+async function runParse(id: number, options: ParseOptions): Promise<void> {
   if (!buffer) throw new Error('没有可解析的文件');
+
+  const bytes = new Uint8Array(buffer);
+  const format = detectFormat(filename, bytes);
+  if (format === 'epub') {
+    post({ id, type: 'progress', phase: '正在解析 EPUB…' });
+    const epub = importEpubFile(bytes, filename);
+    await finishParse(id, epub, options);
+    return;
+  }
+  if (format === 'docx') {
+    post({ id, type: 'progress', phase: '正在解析 DOCX…' });
+    const docx = importDocxFile(bytes, filename);
+    await finishParse(id, docx, options);
+    return;
+  }
 
   post({ id, type: 'progress', phase: '正在检测编码…' });
   const decoded = decodeBuffer(buffer, options.encoding);
@@ -42,24 +68,32 @@ function runParse(id: number, options: ParseOptions) {
     chapters,
     warnings,
     titleGuess: guessTitleFromText(text.slice(0, 2000)) || guessTitle(filename),
-    authorGuess: guessAuthor(text.slice(0, 5000)),
+    authorGuess: guessAuthor(text.slice(0, 5000)) || parseFilenameInfo(filename).author,
   };
 
-  post({ id, type: 'parsed', result });
+  await finishParse(id, result, options);
 }
 
 ctx.onmessage = (event) => {
   const message = event.data;
+  const fail = (error: unknown) => {
+    post({
+      id: message.id,
+      type: 'error',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  };
+
   try {
     if (message.type === 'parse') {
       buffer = message.buffer;
       filename = message.filename;
-      runParse(message.id, message.options);
+      void runParse(message.id, message.options).catch(fail);
       return;
     }
 
     if (message.type === 'reparse') {
-      runParse(message.id, message.options);
+      void runParse(message.id, message.options).catch(fail);
       return;
     }
 
@@ -78,6 +112,7 @@ ctx.onmessage = (event) => {
         meta: message.meta,
         layout: message.layout,
         cover: message.cover,
+        font: message.font,
         version: message.version,
       });
       post({ id: message.id, type: 'packed', data }, [data.buffer as ArrayBuffer]);
@@ -90,10 +125,6 @@ ctx.onmessage = (event) => {
       post({ id: message.id, type: 'zipped', data }, [data.buffer as ArrayBuffer]);
     }
   } catch (error) {
-    post({
-      id: message.id,
-      type: 'error',
-      message: error instanceof Error ? error.message : String(error),
-    });
+    fail(error);
   }
 };

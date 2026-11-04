@@ -1,4 +1,5 @@
 import type { Chapter } from '../types';
+import { tidyTitleSpacing } from './chapters';
 
 export type SplitMode = 'split' | 'title';
 
@@ -6,7 +7,8 @@ export function suggestChapterTitle(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return '新章节';
   const cleaned = trimmed.replace(/[。．.！!？?；;]+$/, '').trim() || trimmed;
-  return cleaned.length <= 40 ? cleaned : `${cleaned.slice(0, 40)}…`;
+  const tidy = tidyTitleSpacing(cleaned);
+  return tidy.length <= 40 ? tidy : `${tidy.slice(0, 40)}…`;
 }
 
 /**

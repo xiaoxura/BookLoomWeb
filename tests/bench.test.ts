@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import iconv from 'iconv-lite';
 import { describe, expect, it } from 'vitest';
 import { chaptersFromText, countChars } from '../src/core/chapters';
-import { buildEpub } from '../src/core/epub';
+import { buildEpub } from '../src/core/export/epub';
 import { decodeBuffer, normalizeText } from '../src/core/text';
 
 const WORDS =

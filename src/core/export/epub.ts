@@ -1,5 +1,5 @@
 import { strToU8, zipSync, type Zippable } from 'fflate';
-import type { BookMeta, Chapter, CoverData, LayoutOptions } from '../types';
+import type { BookMeta, Chapter, CoverData, FontData, LayoutOptions } from '../../types';
 
 const MAX_DOC_CHARS = 40000;
 
@@ -8,8 +8,40 @@ export interface EpubInput {
   meta: BookMeta;
   layout: LayoutOptions;
   cover: CoverData | null;
+  /** 嵌入正文的字体，可选 */
+  font?: FontData | null;
   /** 2 = EPUB 2.0（老设备兼容），3 = EPUB 3（默认） */
   version?: 2 | 3;
+}
+
+const FONT_KINDS: Record<string, { mime: string; format: string }> = {
+  ttf: { mime: 'font/ttf', format: 'truetype' },
+  otf: { mime: 'font/otf', format: 'opentype' },
+  woff: { mime: 'font/woff', format: 'woff' },
+  woff2: { mime: 'font/woff2', format: 'woff2' },
+};
+
+function fontKind(name: string): { ext: string; mime: string; format: string } {
+  const ext = (name.match(/\.(ttf|otf|woff2?)$/i)?.[1] ?? 'ttf').toLowerCase();
+  const kind = FONT_KINDS[ext] ?? FONT_KINDS.ttf;
+  return { ext, ...kind };
+}
+
+/** 「第1章 我的天呐」拆成序号和标题，返回 null 表示没有可拆的序号 */
+function splitChapterNumber(title: string): [string, string] | null {
+  const matched = title.match(/^(第\s*[0-9零〇一二三四五六七八九十百千万两]+\s*[章节回话])\s*(\S.*)$/);
+  if (!matched) return null;
+  return [matched[1], matched[2]];
+}
+
+function chapterHeading(title: string, separate?: boolean): string {
+  if (separate) {
+    const split = splitChapterNumber(title);
+    if (split) {
+      return `<h2 class="chapter-title"><span class="chapter-number">${escapeXml(split[0])}</span>${escapeXml(split[1])}</h2>`;
+    }
+  }
+  return `<h2 class="chapter-title">${escapeXml(title)}</h2>`;
 }
 
 interface Doc {
@@ -46,7 +78,7 @@ function uuid(): string {
   });
 }
 
-function splitParagraphs(chapters: Chapter[], epub2: boolean): Doc[] {
+function splitParagraphs(chapters: Chapter[], epub2: boolean, layout: LayoutOptions): Doc[] {
   const docs: Doc[] = [];
   chapters.forEach((chapter, ci) => {
     const parts: string[][] = [];
@@ -68,7 +100,7 @@ function splitParagraphs(chapters: Chapter[], epub2: boolean): Doc[] {
         pi === 0
           ? chapter.level === 1
             ? `<h1 class="volume-title">${escapeXml(chapter.title)}</h1>`
-            : `<h2 class="chapter-title">${escapeXml(chapter.title)}</h2>`
+            : chapterHeading(chapter.title, layout.separateChapterNumber)
           : '';
       const sectionType = chapter.level === 1 ? 'part' : 'chapter';
       const inner = `${heading}${paragraphs.map((p) => `<p>${escapeXml(p)}</p>`).join('')}`;
@@ -109,11 +141,22 @@ ${body}
 </html>`;
 }
 
-function stylesheet(layout: LayoutOptions): string {
+function stylesheet(layout: LayoutOptions, fontHref: string | null): string {
+  const custom = (layout.customCss ?? '').trim();
+  const fontFace = fontHref
+    ? `@font-face {
+  font-family: "EmbeddedFont";
+  src: url("../${fontHref}") format("${fontKind(fontHref).format}");
+  font-weight: normal;
+  font-style: normal;
+}
+`
+    : '';
+  const fontFamily = fontHref ? `"EmbeddedFont", ${FONT_STACK[layout.font]}` : FONT_STACK[layout.font];
   return `@charset "utf-8";
-html, body { margin: 0; padding: 0; }
+${fontFace}html, body { margin: 0; padding: 0; }
 body {
-  font-family: ${FONT_STACK[layout.font]};
+  font-family: ${fontFamily};
   line-height: ${layout.lineHeight};
   text-align: ${layout.justify ? 'justify' : 'left'};
   word-wrap: break-word;
@@ -138,9 +181,26 @@ h2.chapter-title {
   page-break-before: always;
   break-before: page;
 }
+.toc-page { padding: 1em 0; }
+.toc-page h1 {
+  font-size: 1.6em;
+  text-align: center;
+  margin: 1.5em 0 1.5em 0;
+}
+.toc-page ol { margin: 0 0 0 1.2em; padding: 0; }
+.toc-page li { margin: 0.45em 0; }
+.toc-page a { color: inherit; text-decoration: none; }
+.toc-page a:hover { text-decoration: underline; }
+h2.chapter-title span.chapter-number {
+  display: block;
+  font-size: 0.62em;
+  letter-spacing: 0.18em;
+  margin-bottom: 0.4em;
+  color: #6b5d45;
+}
 .cover-page { margin: 0; padding: 0; text-align: center; }
 .cover-page img { max-width: 100%; max-height: 100%; }
-`;
+${custom ? `\n/* 自定义样式 */\n${custom}\n` : ''}`;
 }
 
 interface NavItem {
@@ -175,6 +235,19 @@ function navTree(chapters: Chapter[], docs: Doc[]): NavItem[] {
   return roots;
 }
 
+function tocItemList(items: NavItem[]): string {
+  if (!items.length) return '';
+  const lis = items
+    .map(
+      (item) =>
+        `<li><a href="${item.href.replace(/^text\//, '')}">${escapeXml(item.title)}</a>${
+          item.children.length ? tocItemList(item.children) : ''
+        }</li>`,
+    )
+    .join('');
+  return `<ol>${lis}</ol>`;
+}
+
 function navList(items: NavItem[]): string {
   if (!items.length) return '';
   const lis = items
@@ -200,15 +273,23 @@ function ncxNavPoints(items: NavItem[], state: { order: number }): string {
 }
 
 export function buildEpub(input: EpubInput): Uint8Array {
-  const { chapters, layout, cover } = input;
+  const { chapters, layout, cover, font } = input;
   const epub2 = input.version === 2;
   const title = input.meta.title.trim() || '未命名';
   const author = input.meta.author.trim() || '佚名';
   const lang = input.meta.language || 'zh-CN';
   const identifier = `urn:uuid:${uuid()}`;
   const modified = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const description = input.meta.description?.trim() ?? '';
+  const publisher = input.meta.publisher?.trim() ?? '';
+  const series = input.meta.series?.trim() ?? '';
+  const tags = [...new Set((input.meta.tags ?? []).map((tag) => tag.trim()).filter(Boolean))];
+  const publishedAt = /^\d{4}-\d{2}-\d{2}$/.test(input.meta.publishedAt ?? '')
+    ? (input.meta.publishedAt as string)
+    : '';
 
-  const docs = splitParagraphs(chapters, epub2);
+  const fontName = font ? `fonts/embedded.${fontKind(font.name).ext}` : null;
+  const docs = splitParagraphs(chapters, epub2, layout);
   const nav = navTree(chapters, docs);
 
   const manifest: string[] = [
@@ -217,6 +298,9 @@ export function buildEpub(input: EpubInput): Uint8Array {
   ];
   if (!epub2) {
     manifest.unshift(`<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`);
+  }
+  if (font && fontName) {
+    manifest.push(`<item id="font" href="${fontName}" media-type="${fontKind(font.name).mime}"/>`);
   }
   const coverExt = cover && cover.mime === 'image/png' ? 'png' : 'jpg';
   if (cover) {
@@ -227,12 +311,15 @@ export function buildEpub(input: EpubInput): Uint8Array {
       `<item id="cover" href="text/cover.xhtml" media-type="application/xhtml+xml"/>`,
     );
   }
+  manifest.push(`<item id="toc-page" href="text/toc.xhtml" media-type="application/xhtml+xml"/>`);
   for (const doc of docs) {
     manifest.push(`<item id="${doc.id}" href="${doc.href}" media-type="application/xhtml+xml"/>`);
   }
 
   const spine: string[] = [];
   if (cover) spine.push(`<itemref idref="cover"/>`);
+  // 内嵌目录页放在封面之后、正文之前，方便在阅读器里直接点
+  spine.push(`<itemref idref="toc-page"/>`);
   for (const doc of docs) spine.push(`<itemref idref="${doc.id}"/>`);
 
   const opf = `<?xml version="1.0" encoding="utf-8"?>
@@ -244,7 +331,11 @@ export function buildEpub(input: EpubInput): Uint8Array {
 <dc:title>${escapeXml(title)}</dc:title>
 <dc:creator>${escapeXml(author)}</dc:creator>
 <dc:language>${lang}</dc:language>
-<dc:date>${modified}</dc:date>
+<dc:date>${escapeXml(publishedAt || modified)}</dc:date>
+${description ? `<dc:description>${escapeXml(description)}</dc:description>` : ''}
+${publisher ? `<dc:publisher>${escapeXml(publisher)}</dc:publisher>` : ''}
+${tags.map((tag) => `<dc:subject>${escapeXml(tag)}</dc:subject>`).join('\n')}
+${!epub2 && series ? `<meta property="belongs-to-collection" id="series">${escapeXml(series)}</meta>\n<meta refines="#series" property="collection-type">series</meta>` : ''}
 ${epub2 ? '' : `<meta property="dcterms:modified">${modified}</meta>`}
 ${cover ? '<meta name="cover" content="cover-image"/>' : ''}
 </metadata>
@@ -256,6 +347,7 @@ ${spine.join('\n')}
 </spine>
 <guide>
 ${cover ? '<reference type="cover" title="封面" href="text/cover.xhtml"/>' : ''}
+<reference type="toc" title="目录" href="text/toc.xhtml"/>
 <reference type="text" title="正文" href="${docs[0]?.href ?? 'nav.xhtml'}"/>
 </guide>
 </package>`;
@@ -281,6 +373,14 @@ ${cover ? '<li><a epub:type="cover" href="text/cover.xhtml">封面</a></li>' : '
 </nav>
 </body>
 </html>`;
+
+  const tocPage = xhtmlDoc(
+    '目录',
+    lang,
+    '../styles/style.css',
+    `<div class="toc-page"><h1>目录</h1>${tocItemList(nav)}</div>`,
+    epub2,
+  );
 
   const ncx = `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
@@ -316,7 +416,9 @@ ${ncxNavPoints(nav, { order: 0 })}
   put('OEBPS/content.opf', opf);
   if (!epub2) put('OEBPS/nav.xhtml', navDoc);
   put('OEBPS/toc.ncx', ncx);
-  put('OEBPS/styles/style.css', stylesheet(layout));
+  put('OEBPS/text/toc.xhtml', tocPage);
+  put('OEBPS/styles/style.css', stylesheet(layout, fontName));
+  if (font && fontName) put(`OEBPS/${fontName}`, font.data, 6);
 
   if (cover) {
     put(`OEBPS/images/cover.${coverExt}`, cover.data, 0);

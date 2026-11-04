@@ -47,6 +47,12 @@ export default defineConfig({
   build: {
     target: 'es2020',
     assetsInlineLimit: 8192,
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        changelog: 'changelog.html',
+      },
+    },
   },
   worker: {
     format: 'es',

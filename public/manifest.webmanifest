@@ -1,7 +1,7 @@
 {
-  "name": "txt2book — TXT 转 EPUB",
+  "name": "txt2book — TXT / EPUB / DOCX 导入与互转",
   "short_name": "txt2book",
-  "description": "纯浏览器本地运行的 TXT 转 EPUB 工具，文件不出设备。",
+  "description": "纯浏览器本地运行的电子书转换工具：TXT / EPUB / DOCX 导入与互转，文件不出设备。",
   "lang": "zh-CN",
   "start_url": "/",
   "scope": "/",

@@ -5,6 +5,8 @@ import {
   findHeadingCandidates,
   guessAuthor,
   guessTitleFromText,
+  parseFilenameInfo,
+  tidyTitleSpacing,
 } from '../src/core/chapters';
 
 const NOVEL = `内容简介
@@ -76,10 +78,79 @@ describe('章节识别', () => {
     const { chapters } = chaptersFromText(text, { filterAds: true });
     expect(chapters.map((c) => c.title)).toEqual([
       '第1章 开始',
-      '第654章谁家的？你家的',
-      '第767章可怕！细思极恐',
+      '第654章 谁家的？你家的',
+      '第767章 可怕！细思极恐',
     ]);
     expect(findHeadingCandidates(chapters)).toHaveLength(0);
+  });
+
+  it('章号和标题粘连时补一个空格，已有空白或分隔标点则不动', () => {
+    const text = [
+      '第1章  我的天呐',
+      '正文。',
+      '第2章我的天呐',
+      '正文。',
+      '第3章　　我的天呐',
+      '正文。',
+      '第4章：我的天呐',
+      '正文。',
+      '第5章（上）',
+      '正文。',
+    ].join('\n');
+    const { chapters } = chaptersFromText(text, { filterAds: true });
+    expect(chapters.map((c) => c.title)).toEqual([
+      '第1章 我的天呐',
+      '第2章 我的天呐',
+      '第3章 我的天呐',
+      '第4章：我的天呐',
+      '第5章（上）',
+    ]);
+    expect(tidyTitleSpacing('第2章 我的天呐')).toBe('第2章 我的天呐');
+  });
+
+  it('「第X部分」不会被当成卷，「第二部 分道扬镳」仍然是卷', () => {
+    const body = '这里是一段正文，写点内容凑长度。\n再写一段正文，继续凑长度。';
+    const text = ['第一部分 概述', body, '', '第二部 分道扬镳', body, '', '第一章 开始', body].join('\n');
+    const { chapters } = chaptersFromText(text, { filterAds: true });
+    expect(chapters.map((c) => c.title)).toEqual(['前言', '第二部 分道扬镳', '第一章 开始']);
+    expect(chapters[1].level).toBe(1);
+  });
+
+  it('完本感言、最终章和英文 Section / Page 都能识别', () => {
+    const body = '这里是一段正文，写点内容凑长度。\n再写一段正文，继续凑长度。';
+    const text = [
+      '第一章 开始',
+      body,
+      '',
+      '最终章 归途',
+      body,
+      '',
+      '完本感言',
+      body,
+      '',
+      'Section 2 尾声',
+      body,
+      '',
+      'Page 9',
+      body,
+    ].join('\n');
+    const { chapters } = chaptersFromText(text, { filterAds: true });
+    expect(chapters.map((c) => c.title)).toEqual([
+      '第一章 开始',
+      '最终章 归途',
+      '完本感言',
+      'Section 2 尾声',
+      'Page 9',
+    ]);
+  });
+
+  it('知轩藏书文件名能拆出书名和作者', () => {
+    expect(parseFilenameInfo('《希灵帝国》（校对版全本）作者：远瞳.txt')).toEqual({
+      title: '希灵帝国',
+      author: '远瞳',
+    });
+    expect(parseFilenameInfo('《希灵帝国》作者：远瞳.txt')).toEqual({ title: '希灵帝国', author: '远瞳' });
+    expect(parseFilenameInfo('雾港灯塔（完结）.txt')).toEqual({ title: '雾港灯塔', author: '' });
   });
 
   it('丢弃开头的目录页', () => {
@@ -114,9 +185,9 @@ describe('章节识别', () => {
 
     expect(chapters.map((c) => c.title)).toEqual([
       '内容简介',
-      '第1章穿越重生',
-      '第2章小时候的男主大人',
-      '第3章咱们握手言和吧',
+      '第1章 穿越重生',
+      '第2章 小时候的男主大人',
+      '第3章 咱们握手言和吧',
     ]);
     expect(chapters[0].paragraphs.join('')).toContain('穿进修仙小说');
     expect(chapters[0].paragraphs.join('')).not.toContain('尘屑飞扬');

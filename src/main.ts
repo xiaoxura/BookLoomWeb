@@ -1,17 +1,37 @@
-import './styles.css';
-import { findHeadingCandidates, guessTitle, type HeadingCandidate } from './core/chapters';
-import { coverFromImage, generateCover } from './core/cover';
+import { findHeadingCandidates, guessTitle } from './core/chapters';
 import {
-  clearDraft,
-  clearSource,
+  DEFAULT_COVER_OPTIONS,
+  coverThumbnail,
+  drawCoverPreview,
+  generateCover,
+  normalizeCoverOptions,
+} from './core/cover';
+import {
+  type LoadedBook,
+  createBookId,
+  deleteBook as deleteBookRecord,
   deriveIdSeed,
-  loadDraft,
-  loadSource,
-  saveDraft,
+  estimateStorage,
+  listBooks,
+  loadBook,
+  renameBook as renameBookRecord,
+  saveBookDraft,
+  saveBookFont,
+  saveBookSource,
   sourceMatchesDraft,
+  type BookRecord,
   type DraftData,
 } from './core/draft';
 import { compileRules, getPreset, validateRuleSpec, type RuleSpec } from './core/rules';
+import { EditHistory } from './core/history';
+import { auditChapters, renumberChapters } from './core/audit';
+import {
+  applyReplace,
+  previewReplace,
+  type ReplaceMatch,
+  type ReplaceOptions,
+  type ReplacePreview,
+} from './core/replace';
 import {
   mergeChapterUp,
   removeChapterAt,
@@ -19,121 +39,53 @@ import {
   suggestChapterTitle,
   toggleChapterLevel,
 } from './core/edit';
-import type { BookMeta, Chapter, CoverData, LayoutOptions, ParseResult } from './types';
+import { initNotice } from './notice';
+import type { Chapter, ConvertMode, CoverAuthorPosition, CoverPalette, ParseResult } from './types';
+import {
+  buildFormattedBook,
+  download,
+  exportBook as exportBookAction,
+  formatBytes,
+  sanitizeFilename,
+  toArrayBuffer,
+} from './app/export';
+import { els } from './app/dom';
+import { createRenderer } from './app/render';
+import { bindEvents, type CoverUpdate, type EventDeps } from './app/events';
+import { handleGlobalKeydown, type ShortcutDeps } from './app/shortcuts';
+import {
+  createInitialState,
+  DEFAULT_LAYOUT,
+  EXPORT_FORMATS,
+  loadLastBookId,
+  loadTheme,
+  saveExportFormat,
+  saveLastBookId,
+  saveLayout,
+  saveTheme,
+  type ExportFormat,
+  type MobileView,
+  type State,
+  type ThemeMode,
+} from './app/state';
 import { WorkerClient, type RequestPayload, type WorkerPort } from './worker/client';
 import type { FromWorker } from './worker/protocol';
 
-const $ = <T extends Element = HTMLElement>(selector: string): T => {
-  const node = document.querySelector(selector);
-  if (!node) throw new Error(`缺少元素 ${selector}`);
-  return node as unknown as T;
-};
-
-const els = {
-  dropZone: $('#drop-zone'),
-  fileInput: $('#file-input') as HTMLInputElement,
-  pickFile: $('#pick-file') as HTMLButtonElement,
-  loadSample: $('#load-sample') as HTMLButtonElement,
-  dropLoading: $('#drop-loading'),
-  dropLoadingPhase: $('#drop-loading-phase'),
-  appProgress: $('#app-progress'),
-  themeToggle: $('#theme-toggle') as HTMLButtonElement,
-  workspace: $('#workspace'),
-  mobileTabs: $('#mobile-tabs'),
-  guide: $('#guide'),
-  privacy: $('#privacy'),
-  batch: $('#batch'),
-  batchList: $('#batch-list'),
-  batchSummary: $('#batch-summary'),
-  batchStatus: $('#batch-status'),
-  batchClose: $('#batch-close') as HTMLButtonElement,
-  batchDownload: $('#batch-download') as HTMLButtonElement,
-  changeFile: $('#change-file'),
-  stats: $('#stats'),
-  warnings: $('#warnings'),
-  chapterList: $('#chapter-list'),
-  chapterSearch: $('#chapter-search') as HTMLInputElement,
-  diagnostics: $('#diagnostics'),
-  diagToggle: $('#diag-toggle') as HTMLButtonElement,
-  diagSummary: $('#diag-summary'),
-  diagCaret: $('#diag-caret'),
-  diagList: $('#diag-list'),
-  diagDismiss: $('#diag-dismiss') as HTMLButtonElement,
-  preview: $('#preview'),
-  previewScroll: $('#preview-scroll'),
-  previewMeta: $('#preview-meta'),
-  prevChapter: $('#prev-chapter') as HTMLButtonElement,
-  nextChapter: $('#next-chapter') as HTMLButtonElement,
-  chapterPosition: $('#chapter-position'),
-  selectionBar: $('#selection-bar'),
-  selectionIndex: $('#selection-index'),
-  metaTitle: $('#meta-title') as HTMLInputElement,
-  metaAuthor: $('#meta-author') as HTMLInputElement,
-  coverThumb: $('#cover-thumb') as HTMLButtonElement,
-  coverUpload: $('#cover-upload'),
-  coverAuto: $('#cover-auto'),
-  coverRemove: $('#cover-remove') as HTMLButtonElement,
-  coverInput: $('#cover-input') as HTMLInputElement,
-  coverView: $('#cover-view'),
-  coverViewClose: $('#cover-view-close') as HTMLButtonElement,
-  coverViewImg: $('#cover-view-img') as HTMLImageElement,
-  encoding: $('#encoding') as HTMLSelectElement,
-  filterAds: $('#filter-ads') as HTMLInputElement,
-  rulePreset: $('#rule-preset') as HTMLSelectElement,
-  ruleDetails: $('#rule-details') as HTMLDetailsElement,
-  ruleJson: $('#rule-json') as HTMLTextAreaElement,
-  ruleApply: $('#rule-apply') as HTMLButtonElement,
-  ruleExport: $('#rule-export') as HTMLButtonElement,
-  ruleImport: $('#rule-import') as HTMLButtonElement,
-  ruleFile: $('#rule-file') as HTMLInputElement,
-  ruleError: $('#rule-error'),
-  reparse: $('#reparse') as HTMLButtonElement,
-  font: $('#font') as HTMLSelectElement,
-  lineHeight: $('#line-height') as HTMLInputElement,
-  lineHeightVal: $('#line-height-val'),
-  paraGap: $('#para-gap') as HTMLInputElement,
-  paraGapVal: $('#para-gap-val'),
-  indent: $('#indent') as HTMLInputElement,
-  justify: $('#justify') as HTMLInputElement,
-  export: $('#export') as HTMLButtonElement,
-  exportHint: $('#export-hint'),
-  epubVersion: $('#epub-version') as HTMLSelectElement,
-  status: $('#status'),
-  draftStatus: $('#draft-status'),
-  clearDraft: $('#clear-draft') as HTMLButtonElement,
-  toast: $('#toast'),
-};
-
-const DEFAULT_LAYOUT: LayoutOptions = {
-  lineHeight: 1.75,
-  indent: true,
-  paragraphSpacing: 0,
-  font: 'serif',
-  justify: true,
-};
-
-const LAYOUT_KEY = 'txt2book.layout.v1';
-const EPUB_VERSION_KEY = 'txt2book.epubVersion';
-const THEME_KEY = 'txt2book.theme';
-
-type ThemeMode = 'light' | 'dark';
-type MobileView = 'chapters' | 'preview' | 'settings';
-
-const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 const mobileQuery = window.matchMedia('(max-width: 760px)');
+
+const state: State = createInitialState();
+
+/** 渲染层只管 DOM；当前章节等派生状态也放在这里复用 */
+const render = createRenderer(els, state, () => closeCoverView());
+
+function setExportFormat(value: string) {
+  state.exportFormat = EXPORT_FORMATS.includes(value as ExportFormat) ? (value as ExportFormat) : 'epub';
+  saveExportFormat(state.exportFormat);
+  render.controls();
+}
 
 function isMobileViewport(): boolean {
   return mobileQuery.matches;
-}
-
-function loadTheme(): ThemeMode {
-  try {
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved === 'light' || saved === 'dark') return saved;
-  } catch {
-    /* 隐私模式下可能读取失败 */
-  }
-  return document.documentElement.dataset.theme === 'dark' || darkQuery.matches ? 'dark' : 'light';
 }
 
 let themeMode: ThemeMode = loadTheme();
@@ -153,13 +105,7 @@ function applyTheme(mode: ThemeMode, persist = true): void {
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) meta.content = dark ? '#17150f' : '#f4efe4';
 
-  if (persist) {
-    try {
-      localStorage.setItem(THEME_KEY, mode);
-    } catch {
-      /* 忽略存储失败 */
-    }
-  }
+  if (persist) saveTheme(mode);
 }
 
 function toggleTheme(): void {
@@ -176,96 +122,6 @@ function setMobileView(view: MobileView, scroll = false): void {
   requestAnimationFrame(() => {
     els.workspace.scrollIntoView({ block: 'start', behavior: 'smooth' });
   });
-}
-
-interface BatchItem {
-  file: File;
-  title: string;
-  status: 'waiting' | 'parsing' | 'packing' | 'done' | 'error';
-  chapters?: number;
-  message?: string;
-  data?: Uint8Array;
-}
-
-interface State {
-  parsed: ParseResult | null;
-  chapters: Chapter[];
-  activeId: string | null;
-  meta: BookMeta;
-  layout: LayoutOptions;
-  cover: CoverData | null;
-  coverAuto: boolean;
-  coverUrl: string | null;
-  busy: boolean;
-  filter: string;
-  selectedParagraph: number | null;
-  diagnostics: HeadingCandidate[];
-  diagDismissed: boolean;
-  diagOpen: boolean;
-  idSeed: number;
-  filename: string;
-  rules: RuleSpec | null;
-  rulePreset: string;
-  epubVersion: 2 | 3;
-  batchItems: BatchItem[];
-  batchRunning: boolean;
-  batchCancelled: boolean;
-  sourceReady: boolean;
-  /** 当前草稿关联的原始 TXT id，旧草稿为 null */
-  sourceId: string | null;
-}
-
-const state: State = {
-  parsed: null,
-  chapters: [],
-  activeId: null,
-  meta: { title: '', author: '', language: 'zh-CN' },
-  layout: loadLayout(),
-  cover: null,
-  coverAuto: true,
-  coverUrl: null,
-  busy: false,
-  filter: '',
-  selectedParagraph: null,
-  diagnostics: [],
-  diagDismissed: false,
-  diagOpen: true,
-  idSeed: 0,
-  filename: '',
-  rules: null,
-  rulePreset: 'auto',
-  epubVersion: loadEpubVersion(),
-  batchItems: [],
-  batchRunning: false,
-  batchCancelled: false,
-  sourceReady: false,
-  sourceId: null,
-};
-
-function loadLayout(): LayoutOptions {
-  try {
-    const raw = localStorage.getItem(LAYOUT_KEY);
-    if (raw) return { ...DEFAULT_LAYOUT, ...(JSON.parse(raw) as Partial<LayoutOptions>) };
-  } catch {
-    /* 忽略损坏的本地配置 */
-  }
-  return { ...DEFAULT_LAYOUT };
-}
-
-function loadEpubVersion(): 2 | 3 {
-  try {
-    return localStorage.getItem(EPUB_VERSION_KEY) === '2' ? 2 : 3;
-  } catch {
-    return 3;
-  }
-}
-
-function saveLayout() {
-  try {
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.layout));
-  } catch {
-    /* 隐私模式下可能写入失败 */
-  }
 }
 
 /* ---------------- Worker ---------------- */
@@ -287,7 +143,7 @@ const workerClient = new WorkerClient(
       // Worker 被重置后内存里的原文也没了，禁用重新识别，避免误以为还能用
       state.sourceReady = false;
       setStatus(`后台线程出错：${error.message}`, 'error');
-      updateControls();
+      render.controls();
       toast('后台线程已重置，请重试；重新识别需要重新拖入 TXT');
     },
   },
@@ -299,211 +155,14 @@ function call(payload: RequestPayload, transfer: Transferable[] = []): Promise<F
 
 /* ---------------- 状态与渲染 ---------------- */
 
-function activeChapter(): Chapter | null {
-  return state.chapters.find((chapter) => chapter.id === state.activeId) ?? null;
-}
 
-function totalChars(): number {
-  let total = 0;
-  for (const chapter of state.chapters) {
-    for (const paragraph of chapter.paragraphs) total += paragraph.length;
-  }
-  return total;
-}
 
-function renderStats() {
-  if (!state.parsed) {
-    els.stats.textContent = '—';
-    return;
-  }
-  const encoding = (state.parsed.encoding || 'utf-8').toUpperCase();
-  els.stats.textContent = `${state.chapters.length} 章 · ${totalChars().toLocaleString('zh-CN')} 字 · ${encoding}`;
-}
 
-function renderWarnings(warnings: string[]) {
-  els.warnings.innerHTML = '';
-  if (!warnings.length) {
-    els.warnings.hidden = true;
-    return;
-  }
-  for (const warning of warnings) {
-    const p = document.createElement('p');
-    p.textContent = warning;
-    els.warnings.appendChild(p);
-  }
-  els.warnings.hidden = false;
-}
 
-function isFrontTitle(title: string): boolean {
-  return /^(?:内容简介|作品简介|简介|序章|序言|序|楔子|引子|前言|引言)$/.test(title.trim());
-}
 
-function renderList() {
-  const fragment = document.createDocumentFragment();
-  const query = state.filter.trim().toLowerCase();
-  const numeric = /^\d+$/.test(query) ? Number(query) : null;
-  let chapterNo = 0;
-  let shown = 0;
 
-  state.chapters.forEach((chapter, index) => {
-    const unnumbered = chapter.level === 2 && isFrontTitle(chapter.title);
-    if (chapter.level === 2 && !unnumbered) chapterNo += 1;
-    if (query) {
-      const inTitle = chapter.title.toLowerCase().includes(query);
-      const byNumber = numeric !== null && chapter.level === 2 && chapterNo === numeric;
-      if (!inTitle && !byNumber) return;
-    }
-    shown += 1;
-    const row = document.createElement('div');
-    row.className =
-      'chapter-row' +
-      (chapter.level === 1 ? ' volume' : '') +
-      (chapter.id === state.activeId ? ' active' : '');
-    row.dataset.id = chapter.id;
-    row.dataset.index = String(index);
-    row.setAttribute('role', 'listitem');
 
-    const idx = document.createElement('span');
-    idx.className = 'idx';
-    idx.textContent = chapter.level === 1 ? '卷' : unnumbered ? '序' : String(chapterNo);
 
-    const input = document.createElement('input');
-    input.className = 'ch-title';
-    input.value = chapter.title;
-    input.readOnly = true;
-    input.title = '点击选中章节，再点一次改标题';
-    input.setAttribute('aria-label', `章节标题：${chapter.title}`);
-    input.spellcheck = false;
-
-    const actions = document.createElement('div');
-    actions.className = 'row-actions';
-
-    const rename = document.createElement('button');
-    rename.type = 'button';
-    rename.dataset.act = 'rename';
-    rename.title = '重命名标题';
-    rename.textContent = '✎';
-
-    const level = document.createElement('button');
-    level.type = 'button';
-    level.dataset.act = 'level';
-    level.title = chapter.level === 1 ? '降为普通章节' : '升为卷';
-    level.textContent = chapter.level === 1 ? '降章' : '升卷';
-
-    const merge = document.createElement('button');
-    merge.type = 'button';
-    merge.dataset.act = 'merge';
-    merge.disabled = index === 0;
-    merge.title = index === 0 ? '已经是第一章，不能并入上一章' : '并入上一章';
-    merge.textContent = '↑';
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.dataset.act = 'delete';
-    remove.disabled = state.chapters.length <= 1;
-    remove.title = state.chapters.length <= 1 ? '至少保留一章' : '删除本章';
-    remove.className = 'danger';
-    remove.textContent = '×';
-
-    actions.append(rename, level, merge, remove);
-    row.append(idx, input, actions);
-    fragment.appendChild(row);
-  });
-
-  if (!shown) {
-    const empty = document.createElement('p');
-    empty.className = 'list-empty';
-    empty.textContent = query ? '没有匹配的章节' : '还没有章节';
-    fragment.appendChild(empty);
-  }
-  els.chapterList.replaceChildren(fragment);
-}
-
-function applyLayoutToPreview() {
-  const { layout } = state;
-  const fontStack =
-    layout.font === 'sans'
-      ? `"PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif`
-      : layout.font === 'kai'
-        ? `"Kaiti SC", "KaiTi", "STKaiti", "Noto Serif CJK SC", serif`
-        : `"Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif`;
-  els.preview.style.setProperty('--p-font', fontStack);
-  els.preview.style.setProperty('--p-lh', String(layout.lineHeight));
-  els.preview.style.setProperty('--p-gap', `${layout.paragraphSpacing}em`);
-  els.preview.style.setProperty('--p-indent', layout.indent ? '2em' : '0');
-  els.preview.style.setProperty('--p-align', layout.justify ? 'justify' : 'left');
-}
-
-function renderPreview() {
-  const chapter = activeChapter();
-  els.preview.replaceChildren();
-  applyLayoutToPreview();
-  updateChapterNav();
-
-  if (!chapter) {
-    const p = document.createElement('p');
-    p.className = 'empty';
-    p.textContent = '选择左侧章节开始预览';
-    els.preview.appendChild(p);
-    els.previewMeta.textContent = '';
-    els.previewScroll.scrollTop = 0;
-    updateSelectionBar();
-    return;
-  }
-
-  const heading = document.createElement(chapter.level === 1 ? 'h1' : 'h2');
-  heading.textContent = chapter.title;
-  els.preview.appendChild(heading);
-
-  if (!chapter.paragraphs.length) {
-    const p = document.createElement('p');
-    p.className = 'empty';
-    p.textContent = chapter.level === 1 ? '（卷标题，正文在下一章）' : '（本章没有正文）';
-    els.preview.appendChild(p);
-  } else {
-    const MAX_PREVIEW_CHARS = 120000;
-    const MAX_PARAGRAPH_PREVIEW = 20000;
-    let budget = MAX_PREVIEW_CHARS;
-    let truncated = false;
-
-    for (let index = 0; index < chapter.paragraphs.length; index += 1) {
-      if (budget <= 0) {
-        truncated = true;
-        break;
-      }
-      const text = chapter.paragraphs[index];
-      const take = Math.min(text.length, budget, MAX_PARAGRAPH_PREVIEW);
-      const p = document.createElement('p');
-      p.dataset.index = String(index);
-      p.title = '点击选中这一段，可从这里分章';
-      p.textContent = take < text.length ? `${text.slice(0, take)}…` : text;
-      if (take < text.length) truncated = true;
-      budget -= take;
-      els.preview.appendChild(p);
-    }
-
-    if (truncated) {
-      const note = document.createElement('p');
-      note.className = 'empty';
-      note.textContent = '本章过长，预览只显示前 12 万字；导出的是完整内容。';
-      els.preview.appendChild(note);
-    }
-  }
-
-  const chars = chapter.paragraphs.reduce((n, p) => n + p.length, 0);
-  els.previewMeta.textContent = `${chapter.paragraphs.length} 段 · ${chars.toLocaleString('zh-CN')} 字 · 点段落可拆分`;
-  els.previewScroll.scrollTop = 0;
-  updateSelectionBar();
-}
-
-function updateChapterNav() {
-  const index = state.chapters.findIndex((chapter) => chapter.id === state.activeId);
-  const total = state.chapters.length;
-  els.prevChapter.disabled = index <= 0;
-  els.nextChapter.disabled = index < 0 || index >= total - 1;
-  els.chapterPosition.textContent = index >= 0 && total ? `${index + 1} / ${total}` : '—';
-  els.chapterPosition.title = '当前章节在目录中的位置';
-}
 
 function stepChapter(delta: -1 | 1) {
   const index = state.chapters.findIndex((chapter) => chapter.id === state.activeId);
@@ -522,26 +181,6 @@ function stepChapter(delta: -1 | 1) {
 
 /* ---------------- 段落选择 / 诊断 ---------------- */
 
-function updateSelectionBar() {
-  const chapter = activeChapter();
-  const index = state.selectedParagraph;
-  const valid = !!chapter && index !== null && index >= 0 && index < chapter.paragraphs.length;
-  els.selectionBar.hidden = !valid;
-  if (!valid || index === null) return;
-
-  els.selectionIndex.textContent = String(index + 1);
-  const splitButton = els.selectionBar.querySelector<HTMLButtonElement>('[data-act="split"]');
-  if (splitButton) {
-    splitButton.disabled = index === 0;
-    splitButton.title =
-      index === 0 ? '这是本章第一段，没法再往上拆' : '截断本章，从这一段开始新的一章';
-  }
-  const titleButton = els.selectionBar.querySelector<HTMLButtonElement>('[data-act="title"]');
-  if (titleButton) {
-    titleButton.title =
-      index === 0 ? '用这一段替换本章标题' : '把这一段作为新章节标题，正文从下一段开始';
-  }
-}
 
 function selectParagraph(index: number | null, scroll = false) {
   state.selectedParagraph = index;
@@ -550,7 +189,7 @@ function selectParagraph(index: number | null, scroll = false) {
     paragraph.classList.toggle('selected', on);
     if (on && scroll) paragraph.scrollIntoView({ block: 'center', behavior: 'smooth' });
   });
-  updateSelectionBar();
+  render.updateSelectionBar();
 }
 
 let diagToken = 0;
@@ -560,7 +199,8 @@ function recomputeDiagnostics() {
   const run = () => {
     if (token !== diagToken) return;
     state.diagnostics = findHeadingCandidates(state.chapters, compileRules(state.rules));
-    renderDiagnostics();
+    state.audit = auditChapters(state.chapters);
+    render.diagnostics();
   };
   if (typeof window.requestIdleCallback === 'function') {
     window.requestIdleCallback(run, { timeout: 800 });
@@ -569,65 +209,8 @@ function recomputeDiagnostics() {
   }
 }
 
-function renderDiagnostics() {
-  const items = state.diagnostics;
-  const visible = items.length > 0 && !state.diagDismissed;
-  els.diagnostics.hidden = !visible;
-  if (!visible) return;
 
-  els.diagSummary.textContent = `发现 ${items.length} 处疑似漏章`;
-  els.diagList.hidden = !state.diagOpen;
-  els.diagCaret.textContent = state.diagOpen ? '收起' : '展开';
 
-  const max = 30;
-  els.diagList.replaceChildren();
-  items.slice(0, max).forEach((item) => {
-    const row = document.createElement('div');
-    row.className = 'diag-item';
-
-    const label = document.createElement('button');
-    label.type = 'button';
-    label.className = 'diag-text';
-    label.dataset.role = 'locate';
-    label.dataset.chapterIndex = String(item.chapterIndex);
-    label.dataset.paragraphIndex = String(item.paragraphIndex);
-    label.title = `「${item.chapterTitle}」第 ${item.paragraphIndex + 1} 段，点击定位`;
-
-    const candidate = document.createElement('span');
-    candidate.className = 'diag-cand';
-    candidate.textContent = item.text;
-
-    const source = document.createElement('span');
-    source.className = 'diag-src';
-    source.textContent = `来自「${item.chapterTitle}」第 ${item.paragraphIndex + 1} 段`;
-
-    label.append(candidate, source);
-
-    const action = document.createElement('button');
-    action.type = 'button';
-    action.className = 'diag-action';
-    action.dataset.role = 'title';
-    action.dataset.chapterIndex = String(item.chapterIndex);
-    action.dataset.paragraphIndex = String(item.paragraphIndex);
-    if (item.paragraphIndex === 0) {
-      action.title = '用这一段替换本章标题';
-      action.textContent = '设为标题';
-    } else {
-      action.title = '以此段作为新章节标题，从此处拆出一章';
-      action.textContent = '拆为新章';
-    }
-
-    row.append(label, action);
-    els.diagList.appendChild(row);
-  });
-
-  if (items.length > max) {
-    const more = document.createElement('p');
-    more.className = 'diag-more';
-    more.textContent = `还有 ${items.length - max} 处，建议先手动拆分`;
-    els.diagList.appendChild(more);
-  }
-}
 
 function openCoverView() {
   if (!state.coverUrl) return;
@@ -644,72 +227,10 @@ function closeCoverView(restoreFocus = false) {
   if (restoreFocus) els.coverThumb.focus();
 }
 
-function renderCover() {
-  closeCoverView();
-  if (state.coverUrl) {
-    URL.revokeObjectURL(state.coverUrl);
-    state.coverUrl = null;
-  }
-  els.coverThumb.replaceChildren();
-  els.coverRemove.hidden = !state.cover;
-  els.coverThumb.title = state.cover ? '点击查看封面大图' : '点击上传封面';
-  els.coverThumb.setAttribute('aria-label', state.cover ? '查看封面大图' : '上传封面');
-  if (!state.cover) {
-    const span = document.createElement('span');
-    span.textContent = '无封面';
-    els.coverThumb.appendChild(span);
-    return;
-  }
-  const blob = new Blob([toArrayBuffer(state.cover.data)], { type: state.cover.mime });
-  state.coverUrl = URL.createObjectURL(blob);
-  const img = document.createElement('img');
-  img.src = state.coverUrl;
-  img.alt = '封面预览';
-  els.coverThumb.appendChild(img);
-}
 
-function renderAll() {
-  renderStats();
-  renderList();
-  renderPreview();
-  renderCover();
-  updateControls();
-}
 
-function updateControls() {
-  els.metaTitle.value = state.meta.title;
-  els.metaAuthor.value = state.meta.author;
-  els.export.disabled = state.busy || !state.chapters.length;
-  els.reparse.disabled = state.busy || !state.parsed || !state.sourceReady;
-  els.reparse.title = state.sourceReady ? '' : '恢复的草稿没有原始文件';
-  els.encoding.disabled = !state.sourceReady;
-  els.lineHeight.value = String(state.layout.lineHeight);
-  els.lineHeightVal.textContent = state.layout.lineHeight.toFixed(2);
-  els.paraGap.value = String(state.layout.paragraphSpacing);
-  els.paraGapVal.textContent = state.layout.paragraphSpacing.toFixed(1);
-  els.indent.checked = state.layout.indent;
-  els.justify.checked = state.layout.justify;
-  els.font.value = state.layout.font;
-  els.epubVersion.value = String(state.epubVersion);
-  paintRange(els.lineHeight);
-  paintRange(els.paraGap);
-  updateExportHint();
-}
 
-function paintRange(input: HTMLInputElement): void {
-  const min = Number(input.min || 0);
-  const max = Number(input.max || 100);
-  const value = Number(input.value || 0);
-  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
-  input.style.setProperty('--range-pct', `${Math.max(0, Math.min(100, pct))}%`);
-}
 
-function updateExportHint(): void {
-  els.exportHint.textContent =
-    state.epubVersion === 2
-      ? 'EPUB 2 · 兼容老设备（无 EPUB 3 导航页）'
-      : 'EPUB 3 · 含封面与目录，Kindle 可推送';
-}
 
 function setStatus(message: string, kind: 'normal' | 'error' = 'normal') {
   els.status.textContent = message;
@@ -732,7 +253,6 @@ function setDropLoading(active: boolean, phase?: string): void {
 /* ---------------- 提示 ---------------- */
 
 let toastTimer = 0;
-let searchTimer = 0;
 
 function hideToast() {
   els.toast.hidden = true;
@@ -748,8 +268,9 @@ function toast(message: string, action?: { label: string; onClick: () => void })
     button.type = 'button';
     button.textContent = action.label;
     button.addEventListener('click', () => {
-      action.onClick();
+      // 先收起当前提示，动作里再弹新提示（比如撤销结果）时才不会被立刻隐藏
       hideToast();
+      action.onClick();
     });
     els.toast.appendChild(button);
   }
@@ -761,7 +282,12 @@ function toast(message: string, action?: { label: string; onClick: () => void })
 /* ---------------- 解析 ---------------- */
 
 function parseOptions() {
-  return { encoding: els.encoding.value, filterAds: els.filterAds.checked, rules: state.rules };
+  return {
+    encoding: els.encoding.value,
+    filterAds: els.filterAds.checked,
+    rules: state.rules,
+    convert: state.convert,
+  };
 }
 
 function normalizeEncodingOption(encoding: string): string {
@@ -774,11 +300,22 @@ function normalizeEncodingOption(encoding: string): string {
 
 function showWorkspace() {
   els.workspace.hidden = false;
+  els.shelf.hidden = true;
   els.dropZone.hidden = true;
   els.guide.hidden = true;
   els.privacy.hidden = true;
   els.batch.hidden = true;
   setMobileView('preview');
+}
+
+function showLanding() {
+  els.workspace.hidden = true;
+  els.shelf.hidden = true;
+  els.dropZone.hidden = false;
+  els.guide.hidden = false;
+  els.privacy.hidden = false;
+  els.batch.hidden = true;
+  window.scrollTo(0, 0);
 }
 
 function setActive(id: string | null) {
@@ -787,15 +324,35 @@ function setActive(id: string | null) {
   document.querySelectorAll<HTMLElement>('.chapter-row').forEach((row) => {
     row.classList.toggle('active', row.dataset.id === id);
   });
-  renderPreview();
+  render.preview();
   if (id && isMobileViewport() && mobileView !== 'preview') setMobileView('preview', true);
 }
 
-function applyResult(result: ParseResult) {
+interface ApplyResultOptions {
+  /** 重新应用设置时保留用户改过的书名 / 作者 / 封面 */
+  preserveMeta?: boolean;
+  /** 重新解析后按原下标恢复当前章节 */
+  activeIndex?: number;
+}
+
+function applyResult(result: ParseResult, options: ApplyResultOptions = {}) {
+  const preservedMeta = options.preserveMeta ? { ...state.meta } : null;
+  const preservedCover = options.preserveMeta
+    ? { cover: state.cover, coverAuto: state.coverAuto, coverThumb: state.coverThumb }
+    : null;
+
   state.sourceReady = true;
   state.parsed = result;
   state.chapters = result.chapters;
-  state.activeId = result.chapters.find((chapter) => chapter.paragraphs.length)?.id ?? result.chapters[0]?.id ?? null;
+  const indexed = options.activeIndex === undefined ? undefined : result.chapters[options.activeIndex];
+  state.activeId =
+    indexed?.id ??
+    result.chapters.find((chapter) => chapter.paragraphs.length)?.id ??
+    result.chapters[0]?.id ??
+    null;
+  // 新书 / 重新识别的结果与旧历史无关
+  history.clear();
+  titleEditBase = null;
   state.filter = '';
   state.selectedParagraph = null;
   state.diagDismissed = false;
@@ -803,14 +360,46 @@ function applyResult(result: ParseResult) {
   state.idSeed = 0;
   els.chapterSearch.value = '';
   els.chapterSearch.hidden = false;
+
+  const fromEpub = result.sourceType === 'epub';
+  const fromDocx = result.sourceType === 'docx';
+  const fromStructured = fromEpub || fromDocx;
+  if (fromStructured) {
+    if (result.titleGuess) state.meta.title = result.titleGuess;
+    if (result.language) state.meta.language = result.language;
+  }
+  if (fromEpub && result.cover) {
+    state.cover = result.cover;
+    state.coverAuto = false;
+    void refreshCoverThumb();
+  }
+  if (fromEpub && result.metaGuess) {
+    state.meta = { ...state.meta, ...result.metaGuess };
+  }
+
+  if (preservedMeta) state.meta = preservedMeta;
+  if (preservedCover) {
+    state.cover = preservedCover.cover;
+    state.coverAuto = preservedCover.coverAuto;
+    state.coverThumb = preservedCover.coverThumb;
+  }
   els.encoding.value = normalizeEncodingOption(result.encoding);
   if (!state.meta.author) state.meta.author = result.authorGuess;
-  renderWarnings(result.warnings);
+  render.warnings(result.warnings);
   recomputeDiagnostics();
-  renderAll();
-  setStatus(`识别完成 · ${result.chapters.length} 章`);
+  render.all();
+  resetReplacePanel();
+  setStatus(
+    fromEpub
+      ? `已读入 EPUB · ${result.chapters.length} 章`
+      : fromDocx
+        ? `已读入 DOCX · ${result.chapters.length} 章`
+        : `识别完成 · ${result.chapters.length} 章`,
+  );
+  updateHistoryControls();
   scheduleDraftSave(300);
   if (!state.cover) scheduleAutoCover();
+  scheduleCoverPreview(0);
 }
 
 async function loadFile(file: File) {
@@ -824,6 +413,10 @@ async function loadFile(file: File) {
     toast(message);
     return;
   }
+
+  // 换书前先把当前这本的改动落盘，避免旧书丢失最后一次编辑
+  cancelScheduledDraftSave();
+  await saveDraftNow();
 
   const epoch = ++loadEpoch;
   state.busy = true;
@@ -842,19 +435,20 @@ async function loadFile(file: File) {
     );
     if (res.type !== 'parsed' || epoch !== loadEpoch) return;
 
-    // 换书成功后再取消旧的自动保存，解析失败时旧书的待保存内容不受影响
-    cancelScheduledDraftSave();
-    const sessionEpoch = draftEpoch;
-    state.sourceId = createSourceId();
+    // 解析成功后才分配新的书架 id；失败时旧书和旧草稿不受影响
+    state.bookId = createBookId();
+    state.sourceId = state.bookId;
     state.filename = file.name;
-    state.meta.title = guessTitle(file.name);
-    state.meta.author = '';
+    state.meta = { title: guessTitle(file.name), author: '', language: 'zh-CN' };
     state.cover = null;
+    state.coverThumb = null;
     state.coverAuto = true;
+    state.font = null;
     showWorkspace();
     window.scrollTo(0, 0);
     applyResult(res.result);
-    void persistSourceWithDraft(file, epoch, sessionEpoch);
+    saveLastBookId(state.bookId);
+    void persistSourceWithDraft(file, epoch);
   } catch (error) {
     const message = error instanceof Error ? error.message : '解析失败';
     setStatus(message, 'error');
@@ -862,45 +456,210 @@ async function loadFile(file: File) {
   } finally {
     setDropLoading(false);
     state.busy = false;
-    updateControls();
+    render.controls();
   }
 }
 
-async function reparse() {
+interface ReparseOptions {
+  /** 繁简转换需要允许 EPUB / DOCX 从原始文件重跑 */
+  allowStructured?: boolean;
+  /** 转换场景：保留书名 / 封面 / 当前章节，并记一步历史 */
+  conversion?: boolean;
+}
+
+async function reparse(options: ReparseOptions = {}) {
   if (!state.parsed || state.busy) return;
+  const structured =
+    state.parsed.sourceType === 'epub' || state.parsed.sourceType === 'docx';
+  const reading = options.conversion ? '繁简转换' : '重新识别';
+  if (structured && !options.allowStructured) {
+    toast('EPUB / DOCX 已经拆好章节，换编码或加规则都不会重新识别');
+    return;
+  }
   if (!state.sourceReady) {
-    toast('草稿没有可用的原始文件，重新拖入 TXT 后才能换编码或重新识别');
+    toast(
+      options.conversion
+        ? '草稿没有原始文件，重新拖入原文件后才能应用繁简转换'
+        : '草稿没有可用的原始文件，重新拖入原文件后才能换编码或重新识别',
+    );
     return;
   }
   state.busy = true;
-  updateControls();
-  setStatus('正在重新识别…');
+  render.controls();
+  setStatus(`正在${reading}…`);
+  const activeIndex = state.chapters.findIndex((chapter) => chapter.id === state.activeId);
   try {
     const res = await call({ type: 'reparse', options: parseOptions() });
-    if (res.type === 'parsed') {
+    if (res.type !== 'parsed') return;
+    if (options.conversion) {
+      applyResult(res.result, { preserveMeta: true, activeIndex });
+      toast(
+        state.convert === 'traditional'
+          ? '已转为繁体'
+          : state.convert === 'simplified'
+            ? '已转为简体'
+            : '已恢复原文',
+      );
+    } else {
       applyResult(res.result);
       toast('已按新的设置重新识别，手动改过的标题会被覆盖');
     }
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : '重新识别失败', 'error');
+    setStatus(error instanceof Error ? error.message : `${reading}失败`, 'error');
   } finally {
     state.busy = false;
-    updateControls();
+    render.controls();
   }
+}
+
+function setConvert(value: string): void {
+  const mode: ConvertMode =
+    value === 'simplified' || value === 'traditional' ? value : 'none';
+  if (state.convert === mode) return;
+  state.convert = mode;
+  render.controls();
+  scheduleDraftSave(0);
+  if (!state.parsed) return;
+  if (state.busy) {
+    toast('正在处理，请稍候');
+    return;
+  }
+  if (!state.sourceReady) {
+    toast('草稿没有原始文件，重新拖入原文件后才能应用繁简转换');
+    return;
+  }
+  void reparse({ allowStructured: true, conversion: true });
 }
 
 /* ---------------- 封面 ---------------- */
 
 let coverTimer = 0;
+let coverThumbToken = 0;
+
+/** 封面变化后生成书架缩略图；生成失败不阻塞编辑 */
+async function refreshCoverThumb(): Promise<void> {
+  const token = ++coverThumbToken;
+  if (!state.cover) {
+    state.coverThumb = null;
+    return;
+  }
+  const thumb = await coverThumbnail(state.cover);
+  if (token !== coverThumbToken) return;
+  state.coverThumb = thumb;
+  scheduleDraftSave(0);
+}
+
+const FONT_MIME: Record<string, string> = {
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+};
+
+async function importFont(file: File): Promise<void> {
+  const ext = file.name.match(/\.(ttf|otf|woff2?)$/i)?.[1]?.toLowerCase();
+  if (!ext) {
+    toast('请选择 ttf / otf / woff / woff2 字体');
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    toast('字体超过 20MB，请换一个更小的文件');
+    return;
+  }
+  try {
+    const data = new Uint8Array(await file.arrayBuffer());
+    state.font = { name: file.name, data, mime: FONT_MIME[ext] };
+    render.controls();
+    if (state.bookId) {
+      void saveBookFont(state.bookId, state.font).catch(() =>
+        toast('字体没能保存到本地，刷新后需要重新选择'),
+      );
+    }
+    toast('字体已加入，导出时会一起打进 EPUB');
+  } catch {
+    toast('字体读取失败');
+  }
+}
+
+function removeFont(): void {
+  state.font = null;
+  render.controls();
+  if (state.bookId) void saveBookFont(state.bookId, null).catch(() => undefined);
+  toast('已移除嵌入字体');
+}
+
+let coverPreviewTimer = 0;
+
+function coverPreviewStyle(): 'vertical' | 'block' {
+  return state.layout.coverStyle === 'block' ? 'block' : 'vertical';
+}
+
+async function drawCoverPreviewNow(): Promise<void> {
+  try {
+    await drawCoverPreview(
+      els.coverPreview,
+      state.meta.title || '未命名',
+      state.meta.author || '佚名',
+      coverPreviewStyle(),
+      normalizeCoverOptions(state.layout.coverOptions),
+      state.coverAuto ? null : state.cover,
+    );
+  } catch {
+    /* 预览失败不影响导出 */
+  }
+}
+
+function scheduleCoverPreview(delay = 80): void {
+  window.clearTimeout(coverPreviewTimer);
+  coverPreviewTimer = window.setTimeout(() => {
+    void drawCoverPreviewNow();
+  }, delay);
+}
+
+/** 封面参数变更：切回自动封面、重绘预览，并延迟生成正式 JPEG */
+function setCoverOptions(update: CoverUpdate): void {
+  if (update.style) {
+    state.layout.coverStyle = update.style === 'block' ? 'block' : 'vertical';
+  }
+  if (update.reset) {
+    state.layout.coverOptions = { ...DEFAULT_COVER_OPTIONS };
+  } else if (
+    update.palette !== undefined ||
+    update.titleScale !== undefined ||
+    update.authorPosition !== undefined
+  ) {
+    state.layout.coverOptions = normalizeCoverOptions({
+      ...normalizeCoverOptions(state.layout.coverOptions),
+      ...(update.palette !== undefined ? { palette: update.palette as CoverPalette } : {}),
+      ...(update.titleScale !== undefined ? { titleScale: update.titleScale } : {}),
+      ...(update.authorPosition !== undefined
+        ? { authorPosition: update.authorPosition as CoverAuthorPosition }
+        : {}),
+    });
+  }
+  state.coverAuto = true;
+  render.controls();
+  saveLayout(state.layout);
+  scheduleCoverPreview(20);
+  scheduleAutoCover();
+  scheduleDraftSave();
+}
 
 function scheduleAutoCover() {
   if (!state.coverAuto) return;
+  scheduleCoverPreview(20);
   window.clearTimeout(coverTimer);
   coverTimer = window.setTimeout(async () => {
     if (!state.coverAuto) return;
     try {
-      state.cover = await generateCover(state.meta.title || '未命名', state.meta.author || '佚名');
-      renderCover();
+      state.cover = await generateCover(
+        state.meta.title || '未命名',
+        state.meta.author || '佚名',
+        coverPreviewStyle(),
+        state.layout.coverOptions,
+      );
+      render.cover();
+      void refreshCoverThumb();
     } catch {
       /* 封面生成失败不阻塞导出 */
     }
@@ -909,99 +668,127 @@ function scheduleAutoCover() {
 
 /* ---------------- 导出 ---------------- */
 
-function sanitizeFilename(name: string): string {
-  const cleaned = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim();
-  return cleaned || '未命名';
-}
-
-function toArrayBuffer(data: Uint8Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(data.byteLength);
-  new Uint8Array(buffer).set(data);
-  return buffer;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function download(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.rel = 'noopener';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
-}
-
-async function exportEpub() {
-  if (!state.chapters.length || state.busy) return;
-  state.busy = true;
-  updateControls();
-  setStatus('正在生成 EPUB…');
-
-  try {
-    const res = await call({
-      type: 'pack',
-      chapters: state.chapters,
-      meta: state.meta,
-      layout: state.layout,
-      cover: state.cover,
-      version: state.epubVersion,
-    });
-    if (res.type !== 'packed') return;
-
-    const blob = new Blob([toArrayBuffer(res.data)], { type: 'application/epub+zip' });
-    download(blob, `${sanitizeFilename(state.meta.title)}.epub`);
-    setStatus(`已导出 · ${formatBytes(blob.size)}`);
-    toast('EPUB 已生成，拖到阅读器里看看效果吧');
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : '导出失败', 'error');
-  } finally {
-    state.busy = false;
-    updateControls();
-  }
+function exportCurrentBook(): void {
+  void exportBookAction({ state, call, setStatus, toast, updateControls: render.controls });
 }
 
 /* ---------------- 章节操作 ---------------- */
 
-function snapshotChapters(): Chapter[] {
-  return structuredClone(state.chapters);
+const HISTORY_LIMIT = 50;
+/** 历史快照的字符预算：大书存 50 步会吃内存，超出预算时先丢最旧的一步 */
+const HISTORY_MAX_CHARS = 30_000_000;
+
+function chaptersWeight(chapters: Chapter[]): number {
+  let total = 0;
+  for (const chapter of chapters) {
+    total += chapter.title.length;
+    for (const paragraph of chapter.paragraphs) total += paragraph.length;
+  }
+  return total;
 }
 
-function restore(snapshot: Chapter[], activeId: string | null) {
-  state.chapters = snapshot;
-  state.activeId = activeId;
-  state.selectedParagraph = null;
-  renderStats();
-  renderList();
-  renderPreview();
-  updateControls();
-  recomputeDiagnostics();
-  scheduleDraftSave();
+const history = new EditHistory<Chapter[]>({
+  limit: HISTORY_LIMIT,
+  clone: (chapters) => structuredClone(chapters),
+  weight: chaptersWeight,
+  maxWeight: HISTORY_MAX_CHARS,
+});
+
+function updateHistoryControls(): void {
+  const undoLabel = history.undoLabel;
+  const redoLabel = history.redoLabel;
+  els.undoBtn.disabled = !history.canUndo;
+  els.redoBtn.disabled = !history.canRedo;
+  els.undoBtn.title = history.canUndo
+    ? `撤销${undoLabel ? `「${undoLabel}」` : '上一步'}（Ctrl+Z）`
+    : '没有可撤销的操作（Ctrl+Z）';
+  els.redoBtn.title = history.canRedo
+    ? `重做${redoLabel ? `「${redoLabel}」` : '上一步'}（Shift+Ctrl+Z）`
+    : '没有可重做的操作（Shift+Ctrl+Z）';
 }
 
-function commitChapters(next: Chapter[], activeId: string, focusTitle = false) {
-  state.chapters = next;
+/** 记录编辑之前的状态；一次批量操作只调用一次，从而合并成一步 */
+function recordChange(label: string): void {
+  history.record({ value: state.chapters, activeId: state.activeId, label });
+  updateHistoryControls();
+}
+
+function applyChapterState(chapters: Chapter[], activeId: string | null, focusTitle = false): void {
+  state.chapters = chapters;
   state.activeId = activeId;
   state.selectedParagraph = null;
-  renderStats();
-  renderList();
-  renderPreview();
-  updateControls();
+  render.stats();
+  render.list();
+  render.preview();
+  render.controls();
   recomputeDiagnostics();
+  updateHistoryControls();
   scheduleDraftSave();
-  if (focusTitle) focusChapterTitle(activeId);
+  if (focusTitle && activeId) focusChapterTitle(activeId);
 }
+
+function commitChapters(next: Chapter[], activeId: string, label: string, focusTitle = false): void {
+  if (next === state.chapters) return;
+  recordChange(label);
+  applyChapterState(next, activeId, focusTitle);
+}
+
+function undoChapters(): boolean {
+  const frame = history.undo({ value: state.chapters, activeId: state.activeId, label: '' });
+  if (!frame) return false;
+  applyChapterState(frame.value, frame.activeId);
+  return true;
+}
+
+function redoChapters(): boolean {
+  const frame = history.redo({ value: state.chapters, activeId: state.activeId, label: '' });
+  if (!frame) return false;
+  applyChapterState(frame.value, frame.activeId);
+  return true;
+}
+
+function undo(): void {
+  const label = history.undoLabel;
+  if (!undoChapters()) {
+    toast('没有可以撤销的操作');
+    return;
+  }
+  toast(label ? `已撤销「${label}」` : '已撤销上一步');
+}
+
+function redo(): void {
+  const label = history.redoLabel;
+  if (!redoChapters()) {
+    toast('没有可以重做的操作');
+    return;
+  }
+  toast(label ? `已重做「${label}」` : '已重做上一步');
+}
+
+let titleEditBase: {
+  chapters: Chapter[];
+  activeId: string | null;
+  chapterId: string;
+  original: string;
+} | null = null;
 
 function beginTitleEdit(input: HTMLInputElement) {
+  if (!input.readOnly) {
+    input.focus();
+    input.select();
+    return;
+  }
+  const row = input.closest<HTMLElement>('.chapter-row');
+  const chapter = state.chapters.find((item) => item.id === row?.dataset.id);
   input.readOnly = false;
   input.classList.add('editing');
   input.dataset.original = input.value;
+  titleEditBase = {
+    chapters: structuredClone(state.chapters),
+    activeId: state.activeId,
+    chapterId: chapter?.id ?? '',
+    original: chapter?.title ?? input.value,
+  };
   input.focus();
   input.select();
 }
@@ -1010,6 +797,14 @@ function endTitleEdit(input: HTMLInputElement) {
   input.readOnly = true;
   input.classList.remove('editing');
   delete input.dataset.original;
+  const base = titleEditBase;
+  titleEditBase = null;
+  if (!base) return;
+  const chapter = state.chapters.find((item) => item.id === base.chapterId);
+  if (!chapter || chapter.title === base.original) return;
+  history.record({ value: base.chapters, activeId: base.activeId, label: '改标题' });
+  updateHistoryControls();
+  scheduleDraftSave();
 }
 
 function focusChapterTitle(id: string) {
@@ -1031,16 +826,16 @@ function deleteChapter(index: number) {
     toast('至少保留一章');
     return;
   }
-  const snapshot = snapshotChapters();
-  const previousActive = state.activeId;
   const next = removeChapterAt(state.chapters, index);
   if (next === state.chapters) return;
   const nextActive = next[index] ?? next[index - 1];
   if (!nextActive) return;
-  commitChapters(next, nextActive.id);
+  commitChapters(next, nextActive.id, '删除章节');
   toast(`已删除「${chapter.title}」`, {
     label: '撤销',
-    onClick: () => restore(snapshot, previousActive),
+    onClick: () => {
+      undoChapters();
+    },
   });
 }
 
@@ -1052,30 +847,32 @@ function mergeUp(index: number) {
   const previous = state.chapters[index - 1];
   const current = state.chapters[index];
   if (!previous || !current) return;
-  const snapshot = snapshotChapters();
   const next = mergeChapterUp(state.chapters, index);
   if (next === state.chapters) return;
-  commitChapters(next, previous.id);
+  commitChapters(next, previous.id, '合并章节');
   toast(`已把「${current.title}」并入「${previous.title}」`, {
     label: '撤销',
-    onClick: () => restore(snapshot, current.id),
+    onClick: () => {
+      undoChapters();
+    },
   });
 }
 
 function titleFromFirstParagraph(chapterIndex: number) {
   const chapter = state.chapters[chapterIndex];
   if (!chapter || !chapter.paragraphs.length) return;
-  const snapshot = snapshotChapters();
   const next = state.chapters.slice();
   next[chapterIndex] = {
     ...chapter,
     title: suggestChapterTitle(chapter.paragraphs[0]),
     paragraphs: chapter.paragraphs.slice(1),
   };
-  commitChapters(next, chapter.id);
+  commitChapters(next, chapter.id, '设为标题');
   toast('已用第一段作为本章标题', {
     label: '撤销',
-    onClick: () => restore(snapshot, chapter.id),
+    onClick: () => {
+      undoChapters();
+    },
   });
 }
 
@@ -1090,7 +887,6 @@ function splitAt(chapterIndex: number, paragraphIndex: number, mode: 'split' | '
     toast('这是本章第一段，没法再往上拆');
     return;
   }
-  const snapshot = snapshotChapters();
   const id = `ch-new-${++state.idSeed}`;
   const next = splitChapterAt(state.chapters, chapterIndex, paragraphIndex, mode, id);
   if (next === state.chapters) {
@@ -1099,12 +895,14 @@ function splitAt(chapterIndex: number, paragraphIndex: number, mode: 'split' | '
   }
   state.filter = '';
   els.chapterSearch.value = '';
-  commitChapters(next, id, true);
+  commitChapters(next, id, mode === 'title' ? '设为新章标题' : '分章', true);
   // 手机上分章后切回目录，新的章节标题才能获得焦点直接改
   if (isMobileViewport()) setMobileView('chapters');
   toast(mode === 'title' ? '已把这一段设为新章标题，可直接改' : '已从这一段分出新章', {
     label: '撤销',
-    onClick: () => restore(snapshot, chapter.id),
+    onClick: () => {
+      undoChapters();
+    },
   });
 }
 
@@ -1113,8 +911,131 @@ function setChapterLevel(index: number) {
   if (!chapter) return;
   const next = toggleChapterLevel(state.chapters, index);
   if (next === state.chapters) return;
-  commitChapters(next, chapter.id);
+  commitChapters(next, chapter.id, '调整章节层级');
   toast(chapter.level === 1 ? '已降为普通章节' : '已升为卷');
+}
+
+/* ---------------- 批量替换 / 体检修复 ---------------- */
+
+function currentReplaceOptions(): ReplaceOptions {
+  const scope = els.replaceScope.value;
+  return {
+    find: els.replaceFind.value,
+    replace: els.replaceWith.value,
+    scope: scope === 'title' || scope === 'body' ? scope : 'all',
+    regex: els.replaceRegex.checked,
+    caseSensitive: els.replaceCase.checked,
+  };
+}
+
+function setReplaceStatus(message: string, error = false): void {
+  els.replaceStatus.textContent = message;
+  els.replaceStatus.classList.toggle('error', error);
+}
+
+function resetReplacePanel(): void {
+  els.replaceResults.hidden = true;
+  els.replaceResults.replaceChildren();
+  setReplaceStatus('替换前会自动记录一步，可撤销');
+}
+
+function renderReplaceMatches(preview: ReplacePreview): void {
+  els.replaceResults.replaceChildren();
+  preview.matches.forEach((hit: ReplaceMatch) => {
+    const row = document.createElement('div');
+    row.className = 'replace-hit';
+
+    const source = document.createElement('span');
+    source.className = 'replace-src';
+    const position = hit.field === 'title' ? '标题' : `第 ${(hit.paragraphIndex ?? 0) + 1} 段`;
+    source.textContent = `${hit.chapterTitle} · ${position}`;
+
+    const text = document.createElement('span');
+    text.append(document.createTextNode(hit.before));
+    const mark = document.createElement('mark');
+    mark.textContent = hit.match;
+    text.append(mark, document.createTextNode(hit.after));
+    row.append(source, text);
+    els.replaceResults.appendChild(row);
+  });
+
+  if (preview.truncated) {
+    const more = document.createElement('p');
+    more.className = 'diag-more';
+    more.textContent = `只显示前 ${preview.matches.length} 处，实际命中 ${preview.total} 处`;
+    els.replaceResults.appendChild(more);
+  }
+  els.replaceResults.hidden = false;
+}
+
+function runReplacePreview(): void {
+  if (!state.chapters.length) {
+    setReplaceStatus('先导入一本书再替换', true);
+    return;
+  }
+  const preview = previewReplace(state.chapters, currentReplaceOptions());
+  if (!preview.ok) {
+    els.replaceResults.hidden = true;
+    setReplaceStatus(preview.error ?? '预览失败', true);
+    return;
+  }
+  if (!preview.total) {
+    els.replaceResults.hidden = true;
+    setReplaceStatus('没有命中，检查一下查找内容或范围', true);
+    return;
+  }
+  setReplaceStatus(`共命中 ${preview.total.toLocaleString('zh-CN')} 处`);
+  renderReplaceMatches(preview);
+}
+
+function runReplaceApply(): void {
+  if (!state.chapters.length) {
+    setReplaceStatus('先导入一本书再替换', true);
+    return;
+  }
+  const options = currentReplaceOptions();
+  const outcome = applyReplace(state.chapters, options);
+  if (!outcome.ok) {
+    setReplaceStatus(outcome.error ?? '替换失败', true);
+    return;
+  }
+  if (!outcome.total) {
+    setReplaceStatus('没有命中，未做修改', true);
+    return;
+  }
+  // 整次替换只入一步历史，撤销可一次还原
+  commitChapters(outcome.chapters, state.activeId ?? outcome.chapters[0]?.id ?? null, '批量替换');
+  setReplaceStatus(`已替换 ${outcome.total.toLocaleString('zh-CN')} 处，可撤销`);
+  toast(`已替换 ${outcome.total.toLocaleString('zh-CN')} 处`, {
+    label: '撤销',
+    onClick: () => {
+      undoChapters();
+    },
+  });
+  // 替换后刷新预览，方便连续处理剩余命中
+  const preview = previewReplace(state.chapters, options);
+  if (preview.ok && preview.total) {
+    renderReplaceMatches(preview);
+  } else {
+    els.replaceResults.hidden = true;
+  }
+}
+
+function renumberByOrder(): void {
+  if (!state.chapters.length) return;
+  const result = renumberChapters(state.chapters);
+  if (!result.changes.length) {
+    toast('章号已经是连续的，不需要重编号');
+    return;
+  }
+  // 重编号必须手动触发；只改章号数字，不改标题文字
+  commitChapters(result.chapters, state.activeId ?? result.chapters[0]?.id ?? null, '按顺序重编号');
+  toast(`已按顺序重编号 ${result.changes.length} 章`, {
+    label: '撤销',
+    onClick: () => {
+      undoChapters();
+    },
+  });
 }
 
 /* ---------------- 批量转换 ---------------- */
@@ -1146,6 +1067,14 @@ function startBatch(files: File[]) {
     toast(`一次批量最多 200MB（当前 ${formatBytes(totalBytes)}），请分批处理`);
     return;
   }
+  const batchFormat = EXPORT_FORMATS.includes(els.batchFormat.value as ExportFormat)
+    ? (els.batchFormat.value as ExportFormat)
+    : 'epub';
+  state.exportFormat = batchFormat;
+  saveExportFormat(batchFormat);
+  els.batchFormat.value = batchFormat;
+  els.batchFormat.disabled = true;
+
   loadEpoch += 1;
   batchArchive = null;
   batchZipPromise = null;
@@ -1158,64 +1087,19 @@ function startBatch(files: File[]) {
   els.guide.hidden = true;
   els.privacy.hidden = true;
   els.workspace.hidden = true;
+  els.shelf.hidden = true;
   els.batch.hidden = false;
   els.batchClose.disabled = false;
   els.batchClose.textContent = '取消';
   els.batchDownload.disabled = true;
   els.batchStatus.textContent = '正在准备…';
 
-  renderBatch();
+  render.batch();
   void runBatch();
   window.scrollTo(0, 0);
 }
 
-function batchStateText(item: BatchItem): string {
-  switch (item.status) {
-    case 'waiting':
-      return '等待';
-    case 'parsing':
-      return '解析中…';
-    case 'packing':
-      return '生成中…';
-    case 'done':
-      return '完成';
-    case 'error':
-      return '失败';
-  }
-}
 
-function renderBatch() {
-  const items = state.batchItems;
-  const done = items.filter((item) => item.status === 'done').length;
-  const failed = items.filter((item) => item.status === 'error').length;
-  els.batchSummary.textContent = `共 ${items.length} 本 · 完成 ${done}${failed ? ` · 失败 ${failed}` : ''}`;
-
-  const fragment = document.createDocumentFragment();
-  for (const item of items) {
-    const row = document.createElement('li');
-    row.className = 'batch-item';
-
-    const title = document.createElement('span');
-    title.className = 'batch-title';
-    title.textContent = item.title;
-    title.title = item.file.name;
-
-    const meta = document.createElement('span');
-    meta.className = 'batch-meta';
-    meta.textContent = item.chapters ? `${item.chapters} 章` : '';
-
-    const status = document.createElement('span');
-    status.className =
-      'batch-state' + (item.status === 'done' ? ' done' : item.status === 'error' ? ' error' : '');
-    status.textContent = batchStateText(item);
-    status.title = item.message ?? '';
-
-    row.append(title, meta, status);
-    fragment.appendChild(row);
-  }
-  els.batchList.replaceChildren(fragment);
-  els.batchDownload.disabled = done === 0;
-}
 
 async function runBatch() {
   let done = 0;
@@ -1224,7 +1108,7 @@ async function runBatch() {
     if (item.status !== 'waiting') continue;
 
     item.status = 'parsing';
-    renderBatch();
+    render.batch();
     els.batchStatus.textContent = `正在解析：${item.file.name}`;
 
     try {
@@ -1234,7 +1118,12 @@ async function runBatch() {
           type: 'parse',
           buffer,
           filename: item.file.name,
-          options: { encoding: 'auto', filterAds: els.filterAds.checked, rules: state.rules },
+          options: {
+            encoding: 'auto',
+            filterAds: els.filterAds.checked,
+            rules: state.rules,
+            convert: state.convert,
+          },
         },
         [buffer],
       );
@@ -1244,14 +1133,41 @@ async function runBatch() {
       item.title = result.titleGuess || guessTitle(item.file.name);
       item.chapters = result.chapters.length;
       item.status = 'packing';
-      renderBatch();
+      render.batch();
       els.batchStatus.textContent = `正在生成：${item.title}`;
 
-      let cover = null;
-      try {
-        cover = await generateCover(item.title, result.authorGuess || '佚名');
-      } catch {
-        cover = null;
+      if (state.exportFormat !== 'epub') {
+        const formatted = buildFormattedBook(
+          state.exportFormat,
+          result.chapters,
+          {
+            title: item.title,
+            author: result.authorGuess || '',
+            language: result.language || 'zh-CN',
+          },
+          state.layout,
+        );
+        if (!formatted) throw new Error('没有可以导出的正文');
+        item.data = formatted.data;
+        item.ext = formatted.ext;
+        item.status = 'done';
+        done += 1;
+        render.batch();
+        continue;
+      }
+
+      let cover = result.cover ?? null;
+      if (!cover) {
+        try {
+          cover = await generateCover(
+            item.title,
+            result.authorGuess || '佚名',
+            state.layout.coverStyle,
+            state.layout.coverOptions,
+          );
+        } catch {
+          cover = null;
+        }
       }
 
       const packed = await call({
@@ -1260,6 +1176,7 @@ async function runBatch() {
         meta: { title: item.title, author: result.authorGuess || '', language: 'zh-CN' },
         layout: state.layout,
         cover,
+        font: state.font,
         version: state.epubVersion,
       });
       if (packed.type !== 'packed') throw new Error('打包失败');
@@ -1271,11 +1188,12 @@ async function runBatch() {
       item.status = 'error';
       item.message = error instanceof Error ? error.message : '转换失败';
     }
-    renderBatch();
+    render.batch();
   }
 
   state.busy = false;
   state.batchRunning = false;
+  els.batchFormat.disabled = false;
   els.batchClose.disabled = false;
   els.batchClose.textContent = '返回';
 
@@ -1303,9 +1221,10 @@ function buildBatchZip(): Promise<BatchArchive | null> {
   for (const item of state.batchItems) {
     if (item.status !== 'done' || !item.data) continue;
     const base = sanitizeFilename(item.title) || '未命名';
-    let name = `${base}.epub`;
+    const ext = item.ext ?? 'epub';
+    let name = `${base}.${ext}`;
     let index = 2;
-    while (used.has(name)) name = `${base} (${index++}).epub`;
+    while (used.has(name)) name = `${base} (${index++}).${ext}`;
     used.add(name);
     files[name] = item.data;
     count += 1;
@@ -1350,15 +1269,10 @@ function resetBatch() {
   state.batchItems = [];
   state.batchRunning = false;
   state.batchCancelled = false;
-  els.batch.hidden = true;
-  els.workspace.hidden = true;
-  els.dropZone.hidden = false;
-  els.guide.hidden = false;
-  els.privacy.hidden = false;
   els.batchDownload.disabled = true;
   els.batchClose.disabled = false;
   els.batchClose.textContent = '取消';
-  window.scrollTo(0, 0);
+  showLanding();
 }
 
 /* ---------------- 识别规则 ---------------- */
@@ -1489,8 +1403,11 @@ function saveDraftNow(epoch = draftEpoch): Promise<void> {
   return enqueueDraftWrite(async () => {
     if (epoch !== draftEpoch) return;
     try {
-      await saveDraft(snapshot);
+      await saveBookDraft(snapshot, undefined, {
+        coverThumb: state.cover ? (state.coverThumb ?? undefined) : null,
+      });
       if (epoch !== draftEpoch) return;
+      saveLastBookId(snapshot.bookId ?? null);
       const time = new Date(snapshot.savedAt).toLocaleTimeString('zh-CN', {
         hour: '2-digit',
         minute: '2-digit',
@@ -1504,40 +1421,48 @@ function saveDraftNow(epoch = draftEpoch): Promise<void> {
   });
 }
 
-function createSourceId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  return `src-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 /**
  * 把新书的原始文件与草稿放在同一个事务里写入。
  * 保存失败时最多留下「新草稿 + 旧原文」，恢复时 id 不匹配会被判定为无原文，不会拿去重新识别。
  */
-async function persistSourceWithDraft(file: File, fileEpoch: number, sessionEpoch: number): Promise<void> {
+async function persistSourceWithDraft(file: File, fileEpoch: number): Promise<void> {
   try {
     const copy = await file.arrayBuffer();
-    if (fileEpoch !== loadEpoch || sessionEpoch !== draftEpoch) return;
+    if (fileEpoch !== loadEpoch) return;
     const snapshot = draftSnapshot();
-    if (!snapshot?.sourceId) return;
+    if (!snapshot?.bookId) return;
+    const source = { id: snapshot.bookId, name: file.name, data: copy };
+    // 原文写入不跟 draftEpoch 绑定：切书 / 进书架时也要把这本新书的原文补上；
+    // 删除当前书会等待 draftSaveChain 完成后再删，不会把书「写回来」。
     await enqueueDraftWrite(async () => {
-      if (fileEpoch !== loadEpoch || sessionEpoch !== draftEpoch) return;
       try {
-        await saveDraft(snapshot, { id: snapshot.sourceId as string, name: file.name, data: copy });
+        const current = draftSnapshot();
+        if (current && current.bookId === snapshot.bookId) {
+          // 仍停留在本书：顺手把最新草稿一起写入，避免用旧快照覆盖新编辑
+          await saveBookDraft(current, source, {
+            coverThumb: state.cover ? (state.coverThumb ?? undefined) : null,
+          });
+          saveLastBookId(current.bookId ?? null);
+        } else {
+          // 已经切走：旧草稿在切书时已落盘，这里只补原文
+          await saveBookSource(source);
+        }
       } catch {
-        if (fileEpoch === loadEpoch && sessionEpoch === draftEpoch) {
-          toast('原始文件没能保存到本地，刷新后需要重新拖入 TXT');
+        if (fileEpoch === loadEpoch) {
+          toast('原始文件没能保存到本地，刷新后需要重新拖入文件');
         }
       }
     });
   } catch {
-    if (fileEpoch === loadEpoch) toast('原始文件读取失败，刷新后需要重新拖入 TXT');
+    if (fileEpoch === loadEpoch) toast('原始文件读取失败，刷新后需要重新拖入文件');
   }
 }
 
 function draftSnapshot(): DraftData | null {
-  if (!state.parsed || !state.chapters.length) return null;
+  if (!state.parsed || !state.chapters.length || !state.bookId) return null;
   return {
-    version: 2,
+    version: 3,
+    bookId: state.bookId,
     savedAt: Date.now(),
     filename: state.filename,
     meta: state.meta,
@@ -1546,8 +1471,12 @@ function draftSnapshot(): DraftData | null {
     cover: state.cover,
     coverAuto: state.coverAuto,
     activeId: state.activeId,
-    options: { encoding: els.encoding.value, filterAds: els.filterAds.checked },
-    parse: { ...state.parsed, chapters: [] },
+    options: {
+      encoding: els.encoding.value,
+      filterAds: els.filterAds.checked,
+      convert: state.convert,
+    },
+    parse: { ...state.parsed, chapters: [], cover: null },
     rules: state.rules,
     rulePreset: state.rulePreset,
     sourceId: state.sourceId ?? undefined,
@@ -1559,34 +1488,9 @@ function setDraftStatus(message: string, error = false) {
   els.draftStatus.classList.toggle('error', error);
 }
 
-async function restoreDraftOnStart(): Promise<boolean> {
-  const epoch = loadEpoch;
-  let draft: DraftData | null = null;
-  let source: Awaited<ReturnType<typeof loadSource>> = null;
-  try {
-    [draft, source] = await Promise.all([loadDraft(), loadSource()]);
-  } catch {
-    return false;
-  }
-  if (!draft || epoch !== loadEpoch) return false;
-
-  const sourceOk = sourceMatchesDraft(draft, source);
-  if (!sourceOk && source) {
-    // 老草稿没有 sourceId，或原文在换书时没保存成功：不能信任，直接丢掉
-    await clearSource().catch(() => undefined);
-  }
-
-  let sourceReady = false;
-  if (sourceOk && source) {
-    try {
-      await call({ type: 'source', buffer: source.data, filename: source.name }, [source.data]);
-      sourceReady = true;
-    } catch {
-      sourceReady = false;
-    }
-  }
-  if (epoch !== loadEpoch) return false;
-
+function applyLoadedBook(loaded: LoadedBook, sourceReady: boolean): void {
+  const { draft, book } = loaded;
+  state.bookId = book.id;
   state.sourceReady = sourceReady;
   state.sourceId = draft.sourceId ?? null;
   state.filename = draft.filename ?? '';
@@ -1596,6 +1500,8 @@ async function restoreDraftOnStart(): Promise<boolean> {
   state.layout = { ...DEFAULT_LAYOUT, ...draft.layout };
   state.cover = draft.cover;
   state.coverAuto = draft.coverAuto;
+  state.coverThumb = book.coverThumb;
+  state.font = loaded.font;
   state.filter = '';
   state.selectedParagraph = null;
   state.diagDismissed = false;
@@ -1603,6 +1509,10 @@ async function restoreDraftOnStart(): Promise<boolean> {
   state.idSeed = deriveIdSeed(draft.chapters);
   state.rules = draft.rules ?? null;
   state.rulePreset = draft.rulePreset ?? (draft.rules ? 'custom' : 'auto');
+  state.convert = draft.options.convert ?? 'none';
+  history.clear();
+  titleEditBase = null;
+  updateHistoryControls();
 
   const remembered = draft.chapters.find((chapter) => chapter.id === draft.activeId);
   state.activeId =
@@ -1614,8 +1524,6 @@ async function restoreDraftOnStart(): Promise<boolean> {
   showWorkspace();
   els.chapterSearch.hidden = false;
   els.chapterSearch.value = '';
-  els.metaTitle.value = state.meta.title;
-  els.metaAuthor.value = state.meta.author;
   els.filterAds.checked = draft.options.filterAds;
   els.encoding.value = normalizeEncodingOption(
     draft.options.encoding === 'auto' ? draft.parse.encoding : draft.options.encoding,
@@ -1625,411 +1533,338 @@ async function restoreDraftOnStart(): Promise<boolean> {
   const warnings = [...draft.parse.warnings];
   if (!sourceReady) {
     warnings.unshift(
-      '草稿关联的原始文件缺失或已失效；要换编码或重新识别，请重新拖入同一个 TXT。',
+      '草稿关联的原始文件缺失或已失效；要换编码或重新识别，请重新拖入同一个文件。',
     );
   }
-  renderWarnings(warnings);
+  render.warnings(warnings);
   recomputeDiagnostics();
-  renderAll();
+  render.all();
+  resetReplacePanel();
 
   const minutes = Math.max(1, Math.round((Date.now() - draft.savedAt) / 60000));
   const when = minutes < 60 ? `${minutes} 分钟前` : new Date(draft.savedAt).toLocaleString('zh-CN');
   setDraftStatus(`已恢复 ${when} 的草稿`);
   setStatus('已恢复上次的草稿，继续编辑即可');
+  scheduleCoverPreview(0);
+  saveLastBookId(book.id);
   if (!sourceReady) {
-    toast('草稿关联的原始文件缺失，重新识别前请重新拖入 TXT', {
-      label: '清除草稿',
+    toast('草稿关联的原始文件缺失，重新识别前请重新拖入原文件', {
+      label: '从书架删除',
       onClick: () => {
-        void clearDraftStorage()
-          .catch(() => undefined)
-          .finally(() => window.location.reload());
+        void deleteShelfBook(book.id).catch(() => undefined);
       },
     });
   }
+}
+
+async function openBook(bookId: string, options: { silent?: boolean } = {}): Promise<boolean> {
+  if (!bookId) return false;
+  const epoch = ++loadEpoch;
+  let loaded: LoadedBook | null = null;
+  try {
+    loaded = await loadBook(bookId);
+  } catch (error) {
+    toast(error instanceof Error ? error.message : '打开这本书失败，请稍后重试');
+    return false;
+  }
+  if (!loaded) {
+    if (!options.silent) toast('这本书的草稿数据不完整，可能已被清理');
+    return false;
+  }
+  if (epoch !== loadEpoch) return false;
+
+  let sourceReady = false;
+  if (loaded.source && sourceMatchesDraft(loaded.draft, loaded.source)) {
+    try {
+      await call(
+        { type: 'source', buffer: loaded.source.data, filename: loaded.source.name },
+        [loaded.source.data],
+      );
+      sourceReady = true;
+    } catch {
+      sourceReady = false;
+    }
+  }
+  if (epoch !== loadEpoch) return false;
+
+  applyLoadedBook(loaded, sourceReady);
+  // 迁移来的旧书没有缩略图时按需补一张
+  if (!loaded.book.coverThumb && loaded.draft.cover) void refreshCoverThumb();
+  if (!options.silent) toast(`已打开「${loaded.book.title}」`);
   return true;
 }
 
+async function restoreLastBookOnStart(): Promise<boolean> {
+  let books: BookRecord[] = [];
+  try {
+    books = await listBooks();
+  } catch (error) {
+    toast(
+      error instanceof Error ? `本地书架不可用：${error.message}` : '本地书架不可用，本次只能临时编辑',
+      { label: '重试', onClick: () => window.location.reload() },
+    );
+    return false;
+  }
+  if (!books.length) return false;
+
+  const remembered = loadLastBookId();
+  const target = books.find((book) => book.id === remembered) ?? books[0];
+  return openBook(target.id, { silent: true });
+}
+
+/* ---------------- 书架 ---------------- */
+
+let shelfToken = 0;
+
+function formatCapacity(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  return formatBytes(bytes);
+}
+
+async function shelfStorageLabel(): Promise<string> {
+  const estimate = await estimateStorage();
+  if (!estimate) return '本地书架 · 浏览器未提供容量信息';
+  const parts = [`已用 ${formatCapacity(estimate.usage)}`];
+  if (estimate.quota) parts.push(`可用 ${formatCapacity(estimate.quota)}`);
+  return `本地书架 · ${parts.join(' / ')}`;
+}
+
+async function refreshShelf(): Promise<void> {
+  const token = ++shelfToken;
+  let books: BookRecord[] = [];
+  let label = '本地书架';
+  try {
+    books = await listBooks();
+    label = await shelfStorageLabel();
+  } catch (error) {
+    label = error instanceof Error ? error.message : '本地书架不可用';
+  }
+  if (token !== shelfToken) return;
+  render.shelf(books, label);
+}
+
+async function showShelf(): Promise<void> {
+  if (state.busy) {
+    toast('正在处理，请稍候');
+    return;
+  }
+  // 进入书架前先落盘，卡片上的字数 / 更新时间才是最新的
+  cancelScheduledDraftSave();
+  await saveDraftNow();
+  await refreshShelf();
+  els.shelf.hidden = false;
+  els.workspace.hidden = true;
+  els.dropZone.hidden = true;
+  els.guide.hidden = true;
+  els.privacy.hidden = true;
+  els.batch.hidden = true;
+  window.scrollTo(0, 0);
+}
+
+function closeShelf(): void {
+  if (state.parsed) showWorkspace();
+  else showLanding();
+}
+
+function toggleShelf(): void {
+  if (els.shelf.hidden) void showShelf();
+  else closeShelf();
+}
+
+async function openShelfBook(bookId: string): Promise<void> {
+  if (state.busy) {
+    toast('正在处理，请稍候');
+    return;
+  }
+  if (bookId === state.bookId) {
+    showWorkspace();
+    return;
+  }
+  cancelScheduledDraftSave();
+  await saveDraftNow();
+  if (await openBook(bookId)) window.scrollTo(0, 0);
+}
+
+async function renameShelfBook(bookId: string, title: string): Promise<void> {
+  try {
+    await renameBookRecord(bookId, title);
+    if (bookId === state.bookId) {
+      state.meta.title = title.trim();
+      els.metaTitle.value = state.meta.title;
+      scheduleDraftSave(0);
+    }
+    await refreshShelf();
+    toast('书名已更新');
+  } catch {
+    toast('重命名失败，请稍后重试');
+  }
+}
+
+async function deleteShelfBook(bookId: string): Promise<void> {
+  const current = state.bookId === bookId;
+  const fromShelf = !els.shelf.hidden;
+  try {
+    if (current) {
+      cancelScheduledDraftSave();
+      await draftSaveChain;
+    }
+    await deleteBookRecord(bookId);
+    if (loadLastBookId() === bookId) saveLastBookId(null);
+    if (current) resetWorkspaceState();
+    await refreshShelf();
+    toast('已从书架删除');
+  } catch {
+    toast('删除失败，请稍后重试');
+    return;
+  }
+
+  if (!current) return;
+  const books = await listBooks().catch(() => []);
+  if (!books.length) showLanding();
+  else if (!fromShelf) await showShelf();
+}
+
+function resetWorkspaceState(): void {
+  state.parsed = null;
+  state.chapters = [];
+  state.activeId = null;
+  state.meta = { title: '', author: '', language: 'zh-CN' };
+  state.cover = null;
+  state.coverThumb = null;
+  state.coverAuto = true;
+  state.font = null;
+  state.coverUrl = null;
+  state.filter = '';
+  state.selectedParagraph = null;
+  state.diagnostics = [];
+  state.audit = auditChapters([]);
+  state.diagDismissed = false;
+  state.diagOpen = true;
+  state.idSeed = 0;
+  state.filename = '';
+  state.rules = null;
+  state.rulePreset = 'auto';
+  state.sourceReady = false;
+  state.sourceId = null;
+  state.bookId = null;
+  history.clear();
+  titleEditBase = null;
+  updateHistoryControls();
+  els.chapterSearch.value = '';
+  els.chapterSearch.hidden = true;
+  render.warnings([]);
+  render.all();
+  resetReplacePanel();
+}
+
 async function clearDraftStorage(): Promise<void> {
-  // 先停止待执行的定时器/空闲回调，再等在途写入完成，最后原子删除草稿和原文
+  // 先停止待执行的定时器/空闲回调，再等在途写入完成，最后删掉这本书的书架记录
   cancelScheduledDraftSave();
   await draftSaveChain;
-  await clearDraft();
-  state.sourceId = null;
+  const bookId = state.bookId;
+  if (bookId) {
+    await deleteBookRecord(bookId);
+    if (loadLastBookId() === bookId) saveLastBookId(null);
+  }
+  resetWorkspaceState();
 }
 
 async function handleClearDraft() {
   try {
     await clearDraftStorage();
-    setDraftStatus('草稿已清除，当前编辑内容仍保留在页面里');
-    toast('已清除本地草稿');
+    setDraftStatus('草稿已清除');
+    toast('已从书架删除这本书');
+    const books = await listBooks().catch(() => []);
+    if (books.length) await showShelf();
+    else showLanding();
   } catch {
-    toast('清除失败，请稍后重试');
+    toast('删除失败，请稍后重试');
   }
 }
 
 /* ---------------- 事件绑定 ---------------- */
 
-function bindEvents() {
-  els.themeToggle.addEventListener('click', toggleTheme);
+const eventDeps: EventDeps = {
+  els,
+  state,
+  render,
+  getMobileView: () => mobileView,
+  toggleTheme,
+  setMobileView,
+  setStatus,
+  toast,
+  bindGlobalShortcuts: (event) => handleGlobalKeydown(event, shortcutDeps),
+  loadFile: (file) => void loadFile(file),
+  startBatch,
+  reparse: () => void reparse(),
+  setRulePreset,
+  applyCustomRules,
+  exportRules,
+  importRules: (file) => void importRules(file),
+  exportCurrentBook,
+  setExportFormat,
+  beginTitleEdit,
+  endTitleEdit,
+  setActive,
+  selectParagraph,
+  splitAt,
+  deleteChapter,
+  mergeUp,
+  setChapterLevel,
+  undo,
+  redo,
+  renumberByOrder,
+  runReplacePreview,
+  runReplaceApply,
+  openCoverView,
+  closeCoverView,
+  scheduleAutoCover,
+  scheduleDraftSave,
+  stepChapter,
+  importFont: (file) => void importFont(file),
+  handleClearDraft: () => void handleClearDraft(),
+  downloadBatchZip: () => void downloadBatchZip(),
+  resetBatch,
+  setConvert,
+  coverChanged: () => {
+    void refreshCoverThumb();
+    scheduleCoverPreview(0);
+  },
+  setCoverOptions,
+  removeFont,
+  toggleShelf,
+  closeShelf,
+  openShelfBook: (id) => void openShelfBook(id),
+  renameShelfBook: (id, title) => void renameShelfBook(id, title),
+  deleteShelfBook: (id) => void deleteShelfBook(id),
+};
 
-  els.mobileTabs.addEventListener('click', (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-view]');
-    if (!button) return;
-    const view = button.dataset.view as MobileView | undefined;
-    if (!view || view === mobileView) return;
-    setMobileView(view, true);
-  });
+/* ---------------- 快捷键 ---------------- */
 
-  els.prevChapter.addEventListener('click', () => stepChapter(-1));
-  els.nextChapter.addEventListener('click', () => stepChapter(1));
-
-  els.pickFile.addEventListener('click', () => els.fileInput.click());
-  els.changeFile.addEventListener('click', () => els.fileInput.click());
-  els.fileInput.addEventListener('change', () => {
-    const files = Array.from(els.fileInput.files ?? []);
-    els.fileInput.value = '';
-    if (!files.length) return;
-    if (files.length === 1) void loadFile(files[0]);
-    else startBatch(files);
-  });
-
-  els.loadSample.addEventListener('click', async () => {
-    try {
-      const response = await fetch('/sample.txt');
-      const text = await response.text();
-      const file = new File([text], '雾港灯塔.txt', { type: 'text/plain' });
-      void loadFile(file);
-    } catch {
-      setStatus('示例加载失败，请直接选择本地文件', 'error');
-    }
-  });
-
-  const onDragOver = (event: DragEvent) => {
-    event.preventDefault();
-    els.dropZone.classList.add('dragover');
-  };
-  const onDragLeave = () => els.dropZone.classList.remove('dragover');
-  const onDrop = (event: DragEvent) => {
-    event.preventDefault();
-    els.dropZone.classList.remove('dragover');
-    const files = Array.from(event.dataTransfer?.files ?? []).filter((item) => /\.txt$/i.test(item.name));
-    if (files.length === 1) void loadFile(files[0]);
-    else if (files.length > 1) startBatch(files);
-    else toast('请拖入 .txt 文件');
-  };
-
-  els.dropZone.addEventListener('dragover', onDragOver);
-  els.dropZone.addEventListener('dragleave', onDragLeave);
-  els.dropZone.addEventListener('drop', onDrop);
-
-  window.addEventListener('dragover', (event) => event.preventDefault());
-  window.addEventListener('drop', (event) => {
-    if (els.dropZone.contains(event.target as Node) || els.dropZone.hidden) return;
-    event.preventDefault();
-    const files = Array.from(event.dataTransfer?.files ?? []).filter((item) => /\.txt$/i.test(item.name));
-    if (files.length === 1) void loadFile(files[0]);
-    else if (files.length > 1) startBatch(files);
-  });
-
-  els.chapterList.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement;
-    const row = target.closest<HTMLElement>('.chapter-row');
-    if (!row) return;
-    const index = Number(row.dataset.index);
-    if (!Number.isFinite(index) || index < 0) return;
-
-    const action = target.closest<HTMLElement>('[data-act]')?.dataset.act;
-    if (action === 'delete') {
-      deleteChapter(index);
-      return;
-    }
-    if (action === 'merge') {
-      mergeUp(index);
-      return;
-    }
-    if (action === 'level') {
-      setChapterLevel(index);
-      return;
-    }
-    if (action === 'rename') {
-      const input = row.querySelector<HTMLInputElement>('.ch-title');
-      if (input) beginTitleEdit(input);
-      return;
-    }
-    if (target instanceof HTMLInputElement && target.classList.contains('ch-title')) {
-      // 标题平时只读：先选中章节，再点一次才进编辑态，避免手机一点就弹键盘
-      if (!target.readOnly) return;
-      if (row.classList.contains('active')) {
-        beginTitleEdit(target);
-        return;
-      }
-    }
-    setActive(row.dataset.id ?? null);
-  });
-
-  els.chapterList.addEventListener('dblclick', (event) => {
-    const input = (event.target as HTMLElement).closest<HTMLInputElement>('.ch-title');
-    if (input && input.readOnly) beginTitleEdit(input);
-  });
-
-  els.chapterList.addEventListener('focusout', (event) => {
-    const input = (event.target as HTMLElement).closest<HTMLInputElement>('.ch-title');
-    if (input && !input.readOnly) endTitleEdit(input);
-  });
-
-  els.chapterList.addEventListener('keydown', (event) => {
-    const input = (event.target as HTMLElement).closest<HTMLInputElement>('.ch-title');
-    if (!input) return;
-    if (input.readOnly) {
-      if (event.key === 'Enter' || event.key === 'F2') {
-        event.preventDefault();
-        beginTitleEdit(input);
-      }
-      return;
-    }
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      input.blur();
-      return;
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      input.value = input.dataset.original ?? input.value;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.blur();
-    }
-  });
-
-  els.chapterList.addEventListener('input', (event) => {
-    const input = event.target;
-    if (!(input instanceof HTMLInputElement)) return;
-    const row = input.closest<HTMLElement>('.chapter-row');
-    if (!row) return;
-    const chapter = state.chapters.find((item) => item.id === row.dataset.id);
-    if (!chapter) return;
-    chapter.title = input.value;
-    input.setAttribute('aria-label', `章节标题：${input.value}`);
-    scheduleDraftSave();
-    if (chapter.id === state.activeId) {
-      const heading = els.preview.querySelector('h1, h2');
-      if (heading) heading.textContent = input.value || '未命名';
-    }
-  });
-
-  els.metaTitle.addEventListener('input', () => {
-    state.meta.title = els.metaTitle.value;
-    scheduleAutoCover();
-    scheduleDraftSave();
-  });
-  els.metaAuthor.addEventListener('input', () => {
-    state.meta.author = els.metaAuthor.value;
-    scheduleAutoCover();
-    scheduleDraftSave();
-  });
-
-  els.coverThumb.addEventListener('click', () => {
-    if (state.coverUrl) openCoverView();
-    else els.coverInput.click();
-  });
-  els.coverViewClose.addEventListener('click', () => closeCoverView(true));
-  els.coverView.addEventListener('click', (event) => {
-    if (event.target === els.coverViewImg) return;
-    closeCoverView(true);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !els.coverView.hidden) closeCoverView(true);
-  });
-  els.coverUpload.addEventListener('click', () => els.coverInput.click());
-  els.coverRemove.addEventListener('click', () => {
-    state.cover = null;
-    state.coverAuto = false;
-    renderCover();
-    scheduleDraftSave();
-    toast('已移除封面，导出时不再包含封面');
-  });
-  els.coverInput.addEventListener('change', async () => {
-    const file = els.coverInput.files?.[0];
-    els.coverInput.value = '';
-    if (!file) return;
-    try {
-      state.cover = await coverFromImage(file);
-      state.coverAuto = false;
-      renderCover();
-      scheduleDraftSave();
-      toast('封面已更新，导出后可在阅读器书架看到');
-    } catch (error) {
-      toast(error instanceof Error ? error.message : '封面读取失败');
-    }
-  });
-  els.coverAuto.addEventListener('click', () => {
-    state.coverAuto = true;
-    void (async () => {
-      state.cover = await generateCover(state.meta.title || '未命名', state.meta.author || '佚名');
-      renderCover();
-      scheduleDraftSave();
-    })();
-  });
-
-  els.encoding.addEventListener('change', () => void reparse());
-  els.filterAds.addEventListener('change', () => void reparse());
-  els.reparse.addEventListener('click', () => void reparse());
-  els.rulePreset.addEventListener('change', () => setRulePreset(els.rulePreset.value));
-  els.ruleApply.addEventListener('click', () => applyCustomRules());
-  els.ruleExport.addEventListener('click', () => exportRules());
-  els.ruleImport.addEventListener('click', () => els.ruleFile.click());
-  els.ruleFile.addEventListener('change', () => {
-    const file = els.ruleFile.files?.[0];
-    els.ruleFile.value = '';
-    if (file) void importRules(file);
-  });
-  els.export.addEventListener('click', () => void exportEpub());
-  els.epubVersion.addEventListener('change', () => {
-    state.epubVersion = els.epubVersion.value === '2' ? 2 : 3;
-    updateExportHint();
-    try {
-      localStorage.setItem(EPUB_VERSION_KEY, String(state.epubVersion));
-    } catch {
-      /* 忽略存储失败 */
-    }
-    scheduleDraftSave(0);
-  });
-  els.clearDraft.addEventListener('click', () => void handleClearDraft());
-  els.batchDownload.addEventListener('click', () => void downloadBatchZip());
-  els.batchClose.addEventListener('click', () => {
-    if (state.batchRunning) {
-      state.batchCancelled = true;
-      els.batchClose.disabled = true;
-      els.batchStatus.textContent = '正在结束当前任务…';
-      return;
-    }
-    resetBatch();
-  });
-
-  els.font.addEventListener('change', () => {
-    state.layout.font = els.font.value as LayoutOptions['font'];
-    saveLayout();
-    applyLayoutToPreview();
-    scheduleDraftSave();
-  });
-  els.lineHeight.addEventListener('input', () => {
-    state.layout.lineHeight = Number(els.lineHeight.value);
-    els.lineHeightVal.textContent = state.layout.lineHeight.toFixed(2);
-    paintRange(els.lineHeight);
-    saveLayout();
-    applyLayoutToPreview();
-    scheduleDraftSave();
-  });
-  els.paraGap.addEventListener('input', () => {
-    state.layout.paragraphSpacing = Number(els.paraGap.value);
-    els.paraGapVal.textContent = state.layout.paragraphSpacing.toFixed(1);
-    paintRange(els.paraGap);
-    saveLayout();
-    applyLayoutToPreview();
-    scheduleDraftSave();
-  });
-  els.indent.addEventListener('change', () => {
-    state.layout.indent = els.indent.checked;
-    saveLayout();
-    applyLayoutToPreview();
-    scheduleDraftSave();
-  });
-  els.justify.addEventListener('change', () => {
-    state.layout.justify = els.justify.checked;
-    saveLayout();
-    applyLayoutToPreview();
-    scheduleDraftSave();
-  });
-
-  els.preview.addEventListener('click', (event) => {
-    const paragraph = (event.target as HTMLElement).closest<HTMLElement>('p[data-index]');
-    if (!paragraph) return;
-    const index = Number(paragraph.dataset.index);
-    selectParagraph(state.selectedParagraph === index ? null : index);
-  });
-
-  els.selectionBar.addEventListener('click', (event) => {
-    const action = (event.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
-    if (!action) return;
-    if (action === 'cancel') {
-      selectParagraph(null);
-      return;
-    }
-    const chapterIndex = state.chapters.findIndex((chapter) => chapter.id === state.activeId);
-    if (chapterIndex < 0 || state.selectedParagraph === null) return;
-    splitAt(chapterIndex, state.selectedParagraph, action === 'title' ? 'title' : 'split');
-  });
-
-  els.chapterSearch.addEventListener('input', () => {
-    state.filter = els.chapterSearch.value;
-    window.clearTimeout(searchTimer);
-    searchTimer = window.setTimeout(() => renderList(), 140);
-  });
-
-  els.chapterSearch.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      state.filter = '';
-      els.chapterSearch.value = '';
-      renderList();
-      return;
-    }
-    if (event.key === 'Enter') {
-      window.clearTimeout(searchTimer);
-      state.filter = els.chapterSearch.value;
-      renderList();
-      const first = els.chapterList.querySelector<HTMLElement>('.chapter-row');
-      if (first) setActive(first.dataset.id ?? null);
-    }
-  });
-
-  els.diagToggle.addEventListener('click', () => {
-    state.diagOpen = !state.diagOpen;
-    renderDiagnostics();
-  });
-
-  els.diagDismiss.addEventListener('click', () => {
-    state.diagDismissed = true;
-    renderDiagnostics();
-  });
-
-  els.diagList.addEventListener('click', (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-role]');
-    if (!button) return;
-    const chapterIndex = Number(button.dataset.chapterIndex);
-    const paragraphIndex = Number(button.dataset.paragraphIndex);
-
-    if (button.dataset.role === 'title') {
-      splitAt(chapterIndex, paragraphIndex, 'title');
-      return;
-    }
-
-    const chapter = state.chapters[chapterIndex];
-    if (!chapter) return;
-    if (state.filter) {
-      state.filter = '';
-      els.chapterSearch.value = '';
-      renderList();
-    }
-    setActive(chapter.id);
-    requestAnimationFrame(() => {
-      const row = Array.from(els.chapterList.querySelectorAll<HTMLElement>('.chapter-row')).find(
-        (item) => item.dataset.id === chapter.id,
-      );
-      row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-    selectParagraph(paragraphIndex, true);
-  });
-}
+const shortcutDeps: ShortcutDeps = {
+  els,
+  state,
+  closeCoverView,
+  selectParagraph,
+  hideToast,
+  undo,
+  redo,
+  stepChapter,
+  exportBook: exportCurrentBook,
+};
 
 /* ---------------- 启动 ---------------- */
 
 applyTheme(themeMode);
 setMobileView(mobileView);
-paintRange(els.lineHeight);
-paintRange(els.paraGap);
-bindEvents();
-applyLayoutToPreview();
+render.paintRange(els.lineHeight);
+render.paintRange(els.paraGap);
+bindEvents(eventDeps);
+initNotice();
+render.applyLayoutToPreview();
 renderRules();
-void restoreDraftOnStart().then((restored) => {
+updateHistoryControls();
+void restoreLastBookOnStart().then((restored) => {
   if (restored) toast('已恢复上次未导出的草稿');
 });
 
