@@ -3,12 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>txt2book — TXT / EPUB / DOCX 互转与排版</title>
+    <title>txt2book — TXT 转 EPUB 与电子书排版工具（纯本地）</title>
     <meta
       name="description"
-      content="纯浏览器本地运行的电子书转换工具：TXT / EPUB / DOCX 导入与互转，自动识别编码与章节、人工校对、封面生成、排版调节。文件不会上传到任何服务器。"
+      content="免费在线的电子书转换工具：把 TXT 小说转成 EPUB，也支持 EPUB / DOCX 互转。自动识别 UTF-8 / GBK 编码与章节、人工校对、生成封面，导出 EPUB 3 / 2、DOCX、HTML、TXT、Markdown；文件全程在浏览器本地处理，不上传、无需注册。"
+    />
+    <meta
+      name="keywords"
+      content="TXT转EPUB,EPUB转TXT,TXT转电子书,小说转EPUB,EPUB排版,电子书制作,GBK乱码,DOCX转EPUB,知轩藏书,EPUB 3"
+    />
+    <meta name="author" content="xiaoxura" />
+    <meta name="application-name" content="txt2book" />
+    <meta
+      name="robots"
+      content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
     />
     <meta name="theme-color" content="#f4efe4" />
+    <link rel="canonical" href="https://txt2book.xiaoxura.com/" />
+    <link rel="alternate" hreflang="zh-CN" href="https://txt2book.xiaoxura.com/" />
+    <link rel="alternate" hreflang="x-default" href="https://txt2book.xiaoxura.com/" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="txt2book 的 LLM 摘要" />
     <script>
       try {
         const saved = localStorage.getItem('txt2book.theme');
@@ -23,27 +37,198 @@
       }
     </script>
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="txt2book" />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:title" content="txt2book — TXT / EPUB / DOCX 互转与排版" />
+    <meta property="og:url" content="https://txt2book.xiaoxura.com/" />
+    <meta property="og:title" content="txt2book — TXT 转 EPUB 与电子书排版工具" />
     <meta
       property="og:description"
-      content="纯本地电子书转换：TXT 与 EPUB 互转，自动分章、人工校对、封面与 EPUB 3 / 2 导出。文件不上传。"
+      content="纯本地电子书转换：TXT 转 EPUB、EPUB / DOCX 互转，自动分章、人工校对、封面与 EPUB 3 / 2 导出。文件不上传、无需注册。"
     />
-    <meta property="og:image" content="/og.png" />
+    <meta property="og:image" content="https://txt2book.xiaoxura.com/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="txt2book：把 TXT 转成排版体面的 EPUB，纯浏览器本地完成"
+    />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="txt2book — TXT / EPUB / DOCX 互转与排版" />
-    <meta name="twitter:description" content="纯本地 TXT / EPUB / DOCX 导入与互转，自动分章、可校对、支持 EPUB 3 / 2 与 TXT / Markdown 导出。" />
-    <meta name="twitter:image" content="/og.png" />
+    <meta name="twitter:title" content="txt2book — TXT 转 EPUB 与电子书排版工具" />
+    <meta
+      name="twitter:description"
+      content="纯本地 TXT / EPUB / DOCX 导入与互转，自动分章、可校对、支持 EPUB 3 / 2 与 TXT / Markdown 导出。"
+    />
+    <meta name="twitter:image" content="https://txt2book.xiaoxura.com/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="txt2book：把 TXT 转成排版体面的 EPUB，纯浏览器本地完成"
+    />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "txt2book",
-        "applicationCategory": "UtilitiesApplication",
-        "operatingSystem": "Any",
-        "description": "纯浏览器本地运行的电子书转换工具：TXT / EPUB / DOCX 导入，自动识别编码与章节、人工校对、封面生成与多格式导出。",
-        "offers": { "@type": "Offer", "price": "0" },
-        "isAccessibleForFree": true
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://txt2book.xiaoxura.com/#website",
+            "url": "https://txt2book.xiaoxura.com/",
+            "name": "txt2book",
+            "alternateName": "txt2book 电子书转换",
+            "description": "免费、纯浏览器本地运行的 TXT / EPUB / DOCX 电子书转换与排版工具。",
+            "inLanguage": "zh-CN",
+            "publisher": { "@id": "https://txt2book.xiaoxura.com/#organization" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://txt2book.xiaoxura.com/#organization",
+            "name": "txt2book",
+            "url": "https://txt2book.xiaoxura.com/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://txt2book.xiaoxura.com/icon.svg"
+            },
+            "sameAs": ["https://github.com/xiaoxura/txt2book"]
+          },
+          {
+            "@type": "Person",
+            "@id": "https://txt2book.xiaoxura.com/#author",
+            "name": "xiaoxura",
+            "url": "https://github.com/xiaoxura",
+            "sameAs": ["https://github.com/xiaoxura"]
+          },
+          {
+            "@type": ["WebApplication", "SoftwareApplication"],
+            "@id": "https://txt2book.xiaoxura.com/#app",
+            "name": "txt2book",
+            "url": "https://txt2book.xiaoxura.com/",
+            "description": "纯浏览器本地运行的电子书转换工具：TXT 转 EPUB、EPUB / DOCX 互转，自动识别编码与章节、人工校对、封面生成与多格式导出。",
+            "applicationCategory": "UtilitiesApplication",
+            "applicationSubCategory": "电子书转换",
+            "operatingSystem": "Any",
+            "browserRequirements": "需要支持 ES2020 的现代浏览器（Chrome、Edge、Firefox、Safari）",
+            "inLanguage": "zh-CN",
+            "softwareVersion": "%APP_VERSION%",
+            "datePublished": "2026-11-04",
+            "dateModified": "%BUILD_ISO%",
+            "releaseNotes": "https://txt2book.xiaoxura.com/changelog.html",
+            "isAccessibleForFree": true,
+            "license": "https://github.com/xiaoxura/txt2book/blob/main/LICENSE",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" },
+            "featureList": [
+              "TXT / EPUB / DOCX 导入",
+              "EPUB 3 / EPUB 2 / DOCX / 单文件 HTML / TXT / Markdown 导出",
+              "UTF-8 / GBK / GB18030 / Big5 / UTF-16 编码自动识别",
+              "卷 / 章两级章节识别与人工校对",
+              "封面生成与封面编辑器",
+              "行高、段距、缩进、字体、对齐与嵌入字体",
+              "批量转换与 IndexedDB 本地草稿",
+              "繁体 / 简体转换"
+            ],
+            "screenshot": "https://txt2book.xiaoxura.com/og.png",
+            "image": "https://txt2book.xiaoxura.com/og.png",
+            "author": { "@id": "https://txt2book.xiaoxura.com/#author" },
+            "publisher": { "@id": "https://txt2book.xiaoxura.com/#organization" },
+            "isPartOf": { "@id": "https://txt2book.xiaoxura.com/#website" }
+          },
+          {
+            "@type": "HowTo",
+            "@id": "https://txt2book.xiaoxura.com/#howto",
+            "name": "如何把 TXT 转成 EPUB",
+            "description": "用 txt2book 在浏览器里把 TXT 小说转成带目录和封面的 EPUB，文件不上传。",
+            "totalTime": "PT3M",
+            "tool": [{ "@type": "HowToTool", "name": "支持 ES2020 的现代浏览器" }],
+            "step": [
+              {
+                "@type": "HowToStep",
+                "position": 1,
+                "name": "导入 TXT",
+                "text": "把 TXT 拖进页面，自动识别编码并按标题形态和密度分章；EPUB、DOCX 也能直接导入。"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 2,
+                "name": "校对章节",
+                "text": "在左侧目录改标题、合并、删除或升降级，点正文段落「从此分章」；漏章诊断和全书体检会找出缺号、重复和异常章节。"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 3,
+                "name": "导出 EPUB",
+                "text": "填写书名作者、调整行高段距、生成封面，选择 EPUB 3 或 EPUB 2 导出，也可以另存 DOCX、HTML、TXT 或 Markdown。"
+              }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://txt2book.xiaoxura.com/#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "TXT 里的中文会乱码吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "通常不会。导入时会自动判断 UTF-8、GBK / GB18030、Big5 和 UTF-16；识别不准可以在设置里手动切换编码，预览确认后再导出。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "文件会被上传到服务器吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "不会。解析、分章、封面和导出都在浏览器（Web Worker）里完成，没有后端、没有统计脚本，断网也能用；草稿只保存在本机 IndexedDB。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持哪些导入和导出格式？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "导入支持 TXT、EPUB、DOCX；导出支持 EPUB 3、EPUB 2、DOCX、单文件 HTML、TXT 和 Markdown，还可以一次拖入多本书批量导出成 ZIP。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "章节识别不准怎么办？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "在左侧目录直接改标题、合并、删除或升降级，点正文任意段落「从此分章」或「设为标题」；「疑似漏章」诊断会列出像标题却没被识别的段落，也可以自定义 JSON 识别规则。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "能放到 Kindle、Kobo 或国产电纸书上读吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "可以。新款 Kindle 用「发送至 Kindle」推送 EPUB，老款 USB 设备先用 Calibre 转成 AZW3；Kobo、汉王、文石、掌阅、墨案一般直接支持 EPUB，老设备可以导出 EPUB 2。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "免费吗？需要注册吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "完全免费，不需要注册或登录，也没有广告；源码以 MIT 协议开源，可以自行部署。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "大文件会卡吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "解析和转换在 Web Worker 里执行，界面不会卡死；上限主要取决于浏览器可用内存，几十 MB 的 TXT 通常可以处理。"
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "支持繁简转换吗？",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "支持。导入时可选保持原样、转为简体或转为繁体，章节标题和正文会一起转换，原始文件不会被修改。"
+                }
+              }
+            ]
+          }
+        ]
       }
     </script>
     <link rel="stylesheet" href="/src/styles.css" />
@@ -66,6 +251,19 @@
       </div>
       <div class="top-actions">
         <button
+          id="help-btn"
+          class="icon-button"
+          type="button"
+          aria-label="快捷键帮助"
+          title="快捷键帮助（?）"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.6 9.2a2.6 2.6 0 0 1 5.1.7c0 1.7-2.7 1.9-2.7 3.5" />
+            <path d="M12 17.1h.01" />
+          </svg>
+        </button>
+        <button
           id="shelf-btn"
           class="icon-button"
           type="button"
@@ -79,7 +277,7 @@
         </button>
         <a
           id="changelog-link"
-          class="icon-button"
+          class="icon-button hide-sm"
           href="/changelog.html"
           aria-label="更新日志"
           title="更新日志"
@@ -121,7 +319,7 @@
         </button>
         <a
           id="github-link"
-          class="icon-button"
+          class="icon-button hide-sm"
           href="https://github.com/xiaoxura/txt2book"
           target="_blank"
           rel="noopener noreferrer"
@@ -140,12 +338,40 @@
     </header>
 
     <main>
+      <div id="notice-banner" class="notice-banner" hidden>
+        <p>
+          <b>本地处理，不上传</b><span aria-hidden="true"> · </span>请只转换你有权处理的内容，草稿只保存在这台设备上。
+        </p>
+        <div class="notice-banner-actions">
+          <button id="notice-banner-more" class="ghost small" type="button">使用须知</button>
+          <button id="notice-banner-close" class="notice-banner-close" type="button" aria-label="关闭提示">×</button>
+        </div>
+      </div>
       <section id="drop-zone" class="drop-zone">
         <input id="file-input" type="file" accept=".txt,.epub,.docx,text/plain,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden />
         <div class="drop-inner">
-          <div class="drop-icon" aria-hidden="true">📖</div>
-          <h2>把 TXT 或 EPUB 拖进来</h2>
-          <p class="drop-sub">TXT 自动识别 UTF-8 / GBK / GB18030 / Big5；EPUB 直接读回章节、目录层级与封面；DOCX 按标题样式还原卷章；一次拖多本可批量转换</p>
+          <div class="drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 6.6C10.4 5.3 8.2 4.7 5.5 4.7c-.8 0-1.5.07-2 .2v13.9c.5-.13 1.2-.2 2-.2 2.7 0 4.9.6 6.5 1.9 1.6-1.3 3.8-1.9 6.5-1.9.8 0 1.5.07 2 .2V4.9c-.5-.13-1.2-.2-2-.2-2.7 0-4.9.6-6.5 1.9Z" />
+              <path d="M12 6.6v14" />
+            </svg>
+          </div>
+          <h1>
+            <span class="wide-only">TXT 转 EPUB，拖进来就行</span>
+            <span class="touch-only">TXT 转 EPUB，选个文件就行</span>
+          </h1>
+          <p class="drop-sub">自动识别 UTF-8 / GBK 编码与章节，可人工校对、生成封面、调整排版；文件全程留在本机，不上传、不联网。</p>
+          <p class="format-chips" aria-label="支持 TXT、EPUB、DOCX 导入；导出 EPUB 3、EPUB 2、DOCX、HTML、TXT、Markdown">
+            <span class="chip">TXT</span>
+            <span class="chip">EPUB</span>
+            <span class="chip">DOCX</span>
+            <span class="chip-arrow" aria-hidden="true">→</span>
+            <span class="chip out">EPUB 3 / 2</span>
+            <span class="chip out">DOCX</span>
+            <span class="chip out">HTML</span>
+            <span class="chip out">TXT</span>
+            <span class="chip out">MD</span>
+          </p>
           <div class="drop-actions">
             <button id="pick-file" class="primary" type="button">选择文件</button>
             <button id="load-sample" class="ghost" type="button">试试示例</button>
@@ -158,6 +384,32 @@
             <p class="fine">大文件需要几秒，文件始终留在这台设备上</p>
           </div>
         </div>
+      </section>
+
+      <section id="howto" class="guide howto" aria-labelledby="howto-title">
+        <div class="guide-head">
+          <div>
+            <h2 id="howto-title">三步把 TXT 转成 EPUB</h2>
+            <p class="muted">不用注册、不用上传，整个过程都在浏览器里完成</p>
+          </div>
+        </div>
+        <ol class="steps">
+          <li class="step">
+            <span class="step-no" aria-hidden="true">1</span>
+            <h3>导入</h3>
+            <p>把 TXT 拖进上面的框，自动识别 UTF-8 / GBK / GB18030 / Big5 / UTF-16 编码，并按标题形态和密度分好章节；EPUB、DOCX 也能直接读回。</p>
+          </li>
+          <li class="step">
+            <span class="step-no" aria-hidden="true">2</span>
+            <h3>校对</h3>
+            <p>在左侧目录改标题、合并、删除或升降级，点正文任意段落「从此分章」；漏章诊断和全书体检会找出缺号、重复和异常章节。</p>
+          </li>
+          <li class="step">
+            <span class="step-no" aria-hidden="true">3</span>
+            <h3>导出</h3>
+            <p>填好书名作者、调行高段距、生成封面，导出 EPUB 3 / EPUB 2；也可以另存 DOCX、单文件 HTML、TXT 或 Markdown。</p>
+          </li>
+        </ol>
       </section>
 
       <section id="guide" class="guide">
@@ -188,11 +440,61 @@
         <p class="guide-note">目录或排版异常时，在设置里把「EPUB 版本」切成 <b>EPUB 2</b> 再导出一次。</p>
       </section>
 
+      <section id="faq" class="faq" aria-labelledby="faq-title">
+        <div class="guide-head">
+          <div>
+            <h2 id="faq-title">常见问题</h2>
+            <p class="muted">关于编码、隐私、格式与设备兼容</p>
+          </div>
+        </div>
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary>TXT 里的中文会乱码吗？</summary>
+            <p>通常不会。导入时会自动判断 UTF-8、GBK / GB18030、Big5 和 UTF-16；识别不准可以在设置里手动切换编码，预览确认后再导出。</p>
+          </details>
+          <details class="faq-item">
+            <summary>文件会被上传到服务器吗？</summary>
+            <p>不会。解析、分章、封面和导出都在浏览器（Web Worker）里完成，没有后端、没有统计脚本，断网也能用；草稿只保存在本机 IndexedDB。</p>
+          </details>
+          <details class="faq-item">
+            <summary>支持哪些导入和导出格式？</summary>
+            <p>导入支持 TXT、EPUB、DOCX；导出支持 EPUB 3、EPUB 2、DOCX、单文件 HTML、TXT 和 Markdown，还可以一次拖入多本书批量导出成 ZIP。</p>
+          </details>
+          <details class="faq-item">
+            <summary>章节识别不准怎么办？</summary>
+            <p>在左侧目录直接改标题、合并、删除或升降级，点正文任意段落「从此分章」或「设为标题」；「疑似漏章」诊断会列出像标题却没被识别的段落，也可以自定义 JSON 识别规则。</p>
+          </details>
+          <details class="faq-item">
+            <summary>能放到 Kindle、Kobo 或国产电纸书上读吗？</summary>
+            <p>可以。新款 Kindle 用「发送至 Kindle」推送 EPUB，老款 USB 设备先用 Calibre 转成 AZW3；Kobo、汉王、文石、掌阅、墨案一般直接支持 EPUB，老设备可以导出 EPUB 2。</p>
+          </details>
+          <details class="faq-item">
+            <summary>免费吗？需要注册吗？</summary>
+            <p>完全免费，不需要注册或登录，也没有广告；源码以 MIT 协议开源，可以自行部署。</p>
+          </details>
+          <details class="faq-item">
+            <summary>大文件会卡吗？</summary>
+            <p>解析和转换在 Web Worker 里执行，界面不会卡死；上限主要取决于浏览器可用内存，几十 MB 的 TXT 通常可以处理。</p>
+          </details>
+          <details class="faq-item">
+            <summary>支持繁简转换吗？</summary>
+            <p>支持。导入时可选保持原样、转为简体或转为繁体，章节标题和正文会一起转换，原始文件不会被修改。</p>
+          </details>
+        </div>
+      </section>
+
       <section id="privacy" class="privacy">
-        <h2>关于这个工具</h2>
+        <h2>关于 txt2book</h2>
+        <p>
+          txt2book 是一个本地优先的电子书转换与排版工具，主要用来把中文 TXT 小说整理成带目录、封面和排版的 EPUB，也支持 EPUB / DOCX 互转与多格式导出。
+        </p>
         <p>
           所有转换都在你的浏览器里完成：文件不上传、断网也能用，没有统计脚本和第三方请求。
-          草稿只存在本机 IndexedDB，清除浏览器数据即消失。源码以 MIT 协议开源，可以自行部署一份。
+          草稿只存在本机 IndexedDB，清除浏览器数据即消失。
+        </p>
+        <p>
+          由 <a href="https://github.com/xiaoxura/txt2book">xiaoxura</a> 维护，源码以 MIT
+          协议开源，可以自行部署一份。这里不提供、也不存储任何书籍，不会破解 DRM；请只转换你有权处理的内容，喜欢一本书请支持正版。
         </p>
       </section>
 
@@ -245,6 +547,7 @@
             <div>
               <h2>章节</h2>
               <p id="stats" class="muted">—</p>
+              <p id="save-status" class="save-status" data-state="idle" title="草稿自动保存在这台设备上">本机草稿</p>
             </div>
             <div class="panel-head-actions">
               <button id="undo-btn" class="ghost small" type="button" title="撤销（Ctrl+Z）" disabled>↶</button>
@@ -257,9 +560,11 @@
             class="chapter-search"
             type="search"
             placeholder="搜索章节 / 输入章号跳转"
+            aria-label="搜索章节或输入章号跳转"
             autocomplete="off"
             hidden
           />
+          <p id="search-count" class="search-count" aria-live="polite" hidden></p>
           <div id="warnings" class="warnings" hidden></div>
           <div id="diagnostics" class="diag" hidden>
             <div class="diag-head">
@@ -403,6 +708,21 @@
               </details>
             </div>
 
+            <button
+              id="settings-more"
+              class="settings-more"
+              type="button"
+              aria-expanded="false"
+              aria-controls="settings-advanced"
+            >
+              <span class="settings-more-text">
+                <b>排版与高级设置</b>
+                <span class="hint">行距 / 编码 / 识别规则 / 批量替换</span>
+              </span>
+              <span class="settings-more-caret" aria-hidden="true">▸</span>
+            </button>
+
+            <div id="settings-advanced" class="settings-advanced" hidden>
             <div class="group">
               <h3>文本处理</h3>
               <label class="field">
@@ -556,6 +876,7 @@
               <p id="draft-status" class="hint">改动会自动保存在这台设备上，刷新后可继续</p>
               <button id="clear-draft" class="ghost small" type="button">从书架删除这本书</button>
             </div>
+            </div>
           </div>
 
           <div class="group export-group">
@@ -579,20 +900,38 @@
             <button id="export" class="primary wide" type="button" disabled>导出 EPUB</button>
             <p id="export-hint" class="hint">EPUB 3 · 含封面与目录，Kindle 可推送</p>
             <p id="status" class="status" role="status"></p>
+            <div id="export-result" class="export-result" hidden>
+              <div class="export-result-head">
+                <strong id="export-result-title">已生成</strong>
+                <button id="export-result-close" class="export-result-close" type="button" aria-label="关闭导出结果">×</button>
+              </div>
+              <p id="export-result-meta" class="hint"></p>
+              <div class="export-result-actions">
+                <button id="export-again" class="ghost small" type="button">再次下载</button>
+              </div>
+            </div>
           </div>
         </aside>
       </section>
     </main>
 
     <footer class="footer">
-      <span>本地优先 · 无需登录</span>
+      <span>本地优先 · 免费 · 无需登录</span>
       <span class="footer-meta">
+        <button id="shortcuts-link" class="footer-link" type="button">快捷键</button>
+        <span aria-hidden="true">·</span>
+        <a class="footer-link" href="/changelog.html">更新日志</a>
+        <span aria-hidden="true">·</span>
+        <a class="footer-link" href="#faq">常见问题</a>
+        <span aria-hidden="true">·</span>
         <a
           class="footer-link"
           href="https://github.com/xiaoxura/txt2book"
           target="_blank"
           rel="noopener noreferrer"
         >MIT 开源项目</a>
+        <span aria-hidden="true" id="install-sep" hidden>·</span>
+        <button id="install-app" class="footer-link" type="button" hidden>安装到桌面</button>
       </span>
     </footer>
 
@@ -602,9 +941,35 @@
       <p class="lightbox-hint">点击空白处或按 Esc 关闭</p>
     </div>
 
+    <div id="shortcuts" class="lightbox shortcuts" hidden role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+      <div class="shortcuts-card">
+        <div class="shortcuts-head">
+          <div>
+            <p class="notice-kicker">键盘</p>
+            <h2 id="shortcuts-title">快捷键</h2>
+          </div>
+          <button id="shortcuts-close" class="lightbox-close" type="button" aria-label="关闭快捷键帮助">×</button>
+        </div>
+        <div class="shortcuts-list">
+          <div class="shortcut-row"><span><kbd>↑</kbd> <kbd>↓</kbd> 或 <kbd>J</kbd> <kbd>K</kbd></span><span>切换上一章 / 下一章</span></div>
+          <div class="shortcut-row"><span><kbd>/</kbd></span><span>聚焦章节搜索</span></div>
+          <div class="shortcut-row"><span><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd></span><span>按当前格式导出</span></div>
+          <div class="shortcut-row"><span><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd></span><span>撤销</span></div>
+          <div class="shortcut-row"><span><kbd>Shift</kbd> + <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd></span><span>重做</span></div>
+          <div class="shortcut-row"><span><kbd>Esc</kbd></span><span>关闭浮层 / 取消段落选择</span></div>
+          <div class="shortcut-row"><span><kbd>?</kbd></span><span>打开这个帮助</span></div>
+        </div>
+        <p class="hint">在输入框里，单键快捷键会让给输入法；Ctrl / ⌘ + S 仍然可用。</p>
+      </div>
+    </div>
 
-    <div id="toast" class="toast" hidden></div>
-    <noscript>这个工具需要启用 JavaScript。</noscript>
+
+    <div id="row-menu" class="row-menu" role="menu" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <noscript>
+      文件转换需要启用 JavaScript。txt2book 是一个纯浏览器本地运行的 TXT / EPUB / DOCX
+      电子书转换与排版工具；上面的使用步骤、设备导入指南和常见问题不需要脚本也能阅读。
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

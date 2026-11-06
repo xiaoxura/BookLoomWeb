@@ -69,6 +69,234 @@ let searchTimer = 0;
 export function bindEvents(deps: EventDeps): void {
   const { els, state, render } = deps;
 
+  /* ---------- 章节「更多」菜单 ---------- */
+
+  let rowMenuAnchor: HTMLButtonElement | null = null;
+  let rowMenuCleanup: (() => void) | null = null;
+
+  const closeRowMenu = (restoreFocus = false): void => {
+    if (!rowMenuAnchor && els.rowMenu.hidden) return;
+    const anchor = rowMenuAnchor;
+    rowMenuAnchor = null;
+    els.rowMenu.hidden = true;
+    els.rowMenu.replaceChildren();
+    if (anchor) {
+      anchor.setAttribute('aria-expanded', 'false');
+      if (restoreFocus && document.contains(anchor)) anchor.focus();
+    }
+    rowMenuCleanup?.();
+    rowMenuCleanup = null;
+  };
+
+  const openRowMenu = (button: HTMLButtonElement, row: HTMLElement, index: number): void => {
+    if (rowMenuAnchor === button) {
+      closeRowMenu(true);
+      return;
+    }
+    closeRowMenu();
+    const chapter = state.chapters[index];
+    if (!chapter) return;
+
+    const menu = els.rowMenu;
+    const items: Array<{
+      label: string;
+      glyph: string;
+      act: 'rename' | 'level' | 'merge' | 'delete';
+      disabled?: boolean;
+      danger?: boolean;
+    }> = [
+      { label: '重命名标题', glyph: '✎', act: 'rename' },
+      {
+        label: chapter.level === 1 ? '降为普通章节' : '升为卷',
+        glyph: '卷',
+        act: 'level',
+      },
+      { label: '并入上一章', glyph: '↑', act: 'merge', disabled: index === 0 },
+      {
+        label: '删除本章',
+        glyph: '×',
+        act: 'delete',
+        disabled: state.chapters.length <= 1,
+        danger: true,
+      },
+    ];
+
+    for (const item of items) {
+      const menuItem = document.createElement('button');
+      menuItem.type = 'button';
+      menuItem.setAttribute('role', 'menuitem');
+      menuItem.dataset.act = item.act;
+      menuItem.disabled = Boolean(item.disabled);
+      if (item.danger) menuItem.classList.add('danger');
+
+      const glyph = document.createElement('span');
+      glyph.className = 'row-menu-glyph';
+      glyph.textContent = item.glyph;
+      const label = document.createElement('span');
+      label.textContent = item.label;
+      menuItem.append(glyph, label);
+
+      menuItem.addEventListener('click', () => {
+        closeRowMenu();
+        if (item.act === 'rename') {
+          const input = row.querySelector<HTMLInputElement>('.ch-title');
+          if (input) deps.beginTitleEdit(input);
+          return;
+        }
+        if (item.act === 'level') deps.setChapterLevel(index);
+        else if (item.act === 'merge') deps.mergeUp(index);
+        else deps.deleteChapter(index);
+      });
+      menu.append(menuItem);
+    }
+
+    rowMenuAnchor = button;
+    button.setAttribute('aria-expanded', 'true');
+    menu.hidden = false;
+    const rect = button.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const maxLeft = Math.max(8, window.innerWidth - menuRect.width - 8);
+    const left = Math.max(8, Math.min(rect.right - menuRect.width, maxLeft));
+    let top = rect.bottom + 4;
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = rect.top - menuRect.height - 4;
+    }
+    menu.style.left = `${left}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (menu.contains(target) || button.contains(target)) return;
+      closeRowMenu();
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeRowMenu(true);
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const buttons = Array.from(
+        menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+      );
+      if (!buttons.length) return;
+      const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      let next = current;
+      if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = buttons.length - 1;
+      else if (event.key === 'ArrowDown') next = (current + 1 + buttons.length) % buttons.length;
+      else next = (current - 1 + buttons.length) % buttons.length;
+      buttons[next]?.focus();
+    };
+    const onScroll = (): void => closeRowMenu();
+
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    rowMenuCleanup = () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  };
+
+  /* ---------- 设置分层 ---------- */
+
+  const SETTINGS_ADVANCED_KEY = 'txt2book.settingsAdvanced';
+
+  const setSettingsAdvanced = (open: boolean, persist = true): void => {
+    els.settingsAdvanced.hidden = !open;
+    els.settingsMore.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!persist) return;
+    try {
+      localStorage.setItem(SETTINGS_ADVANCED_KEY, open ? '1' : '0');
+    } catch {
+      /* 隐私模式下可能写入失败 */
+    }
+  };
+
+  let advancedOpen = false;
+  try {
+    advancedOpen = localStorage.getItem(SETTINGS_ADVANCED_KEY) === '1';
+  } catch {
+    advancedOpen = false;
+  }
+  setSettingsAdvanced(advancedOpen, false);
+
+  els.settingsMore.addEventListener('click', () => {
+    const opening = els.settingsAdvanced.hidden === true;
+    setSettingsAdvanced(opening);
+    requestAnimationFrame(() => {
+      if (opening) {
+        // 展开后把第一组设置滚到可视区顶部，避免用户以为按钮没反应
+        const first = els.settingsAdvanced.firstElementChild;
+        if (first instanceof HTMLElement) first.scrollIntoView({ block: 'start' });
+      } else {
+        els.settingsMore.scrollIntoView({ block: 'start' });
+      }
+    });
+  });
+
+  /* ---------- 快捷键帮助 ---------- */
+
+  let shortcutsTrigger: HTMLElement | null = null;
+
+  const openShortcuts = (trigger: HTMLElement | null): void => {
+    if (!els.shortcuts.hidden) return;
+    closeRowMenu();
+    shortcutsTrigger = trigger;
+    els.shortcuts.hidden = false;
+    els.shortcutsClose.focus();
+  };
+
+  const closeShortcuts = (): void => {
+    if (els.shortcuts.hidden) return;
+    els.shortcuts.hidden = true;
+    const trigger = shortcutsTrigger;
+    shortcutsTrigger = null;
+    if (trigger && document.contains(trigger)) trigger.focus();
+  };
+
+  els.helpBtn.addEventListener('click', () => openShortcuts(els.helpBtn));
+  els.shortcutsLink.addEventListener('click', () => openShortcuts(els.shortcutsLink));
+  els.shortcutsClose.addEventListener('click', closeShortcuts);
+  els.shortcuts.addEventListener('click', (event) => {
+    if (event.target === els.shortcuts) closeShortcuts();
+  });
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Escape' && !els.shortcuts.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeShortcuts();
+        return;
+      }
+      if (event.key !== '?' || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT')
+      ) {
+        return;
+      }
+      event.preventDefault();
+      openShortcuts(els.helpBtn);
+    },
+    true,
+  );
+
   els.themeToggle.addEventListener('click', () => deps.toggleTheme());
 
   els.shelfBtn.addEventListener('click', () => deps.toggleShelf());
@@ -197,6 +425,12 @@ export function bindEvents(deps: EventDeps): void {
     if (!row) return;
     const index = Number(row.dataset.index);
     if (!Number.isFinite(index) || index < 0) return;
+
+    const menuButton = target.closest<HTMLButtonElement>('.row-menu-btn');
+    if (menuButton) {
+      openRowMenu(menuButton, row, index);
+      return;
+    }
 
     const action = target.closest<HTMLElement>('[data-act]')?.dataset.act;
     if (action === 'delete') {
@@ -384,7 +618,23 @@ export function bindEvents(deps: EventDeps): void {
     saveEpubVersion(state.epubVersion);
     deps.scheduleDraftSave(0);
   });
-  els.clearDraft.addEventListener('click', () => void deps.handleClearDraft());
+  let clearConfirmTimer = 0;
+  const resetClearDraftButton = (): void => {
+    window.clearTimeout(clearConfirmTimer);
+    delete els.clearDraft.dataset.confirm;
+    els.clearDraft.textContent = '从书架删除这本书';
+  };
+  els.clearDraft.addEventListener('click', () => {
+    if (els.clearDraft.dataset.confirm === '1') {
+      resetClearDraftButton();
+      void deps.handleClearDraft();
+      return;
+    }
+    els.clearDraft.dataset.confirm = '1';
+    els.clearDraft.textContent = '再点一次确认删除';
+    window.clearTimeout(clearConfirmTimer);
+    clearConfirmTimer = window.setTimeout(resetClearDraftButton, 4000);
+  });
   els.batchDownload.addEventListener('click', () => void deps.downloadBatchZip());
   els.batchClose.addEventListener('click', () => {
     if (state.batchRunning) {

@@ -3,12 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>更新日志 · txt2book</title>
+    <title>txt2book 更新日志 — TXT / EPUB / DOCX 功能演进</title>
     <meta
       name="description"
-      content="txt2book 的版本更新记录：TXT / EPUB / DOCX 导入与互转、章节识别与校对、书架、繁简转换、封面与排版、批量转换等功能的变更历史。"
+      content="txt2book 的版本更新记录：TXT / EPUB / DOCX 导入与互转、编码与章节识别、人工校对、多草稿书架、繁简转换、封面编辑器与 EPUB 3 / 2 导出。当前版本 v%APP_VERSION%。"
+    />
+    <meta name="author" content="xiaoxura" />
+    <meta
+      name="robots"
+      content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
     />
     <meta name="theme-color" content="#f4efe4" />
+    <link rel="canonical" href="https://txt2book.xiaoxura.com/changelog.html" />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://txt2book.xiaoxura.com/changelog.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://txt2book.xiaoxura.com/changelog.html"
+    />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="txt2book 的 LLM 摘要" />
     <script>
       try {
         const saved = localStorage.getItem('txt2book.theme');
@@ -20,6 +37,91 @@
               : 'light';
       } catch {
         /* 本地存储不可用时先跟随系统，脚本会补上具体主题 */
+      }
+    </script>
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="txt2book" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:url" content="https://txt2book.xiaoxura.com/changelog.html" />
+    <meta property="og:title" content="txt2book 更新日志 — TXT / EPUB / DOCX 功能演进" />
+    <meta
+      property="og:description"
+      content="从 TXT ⇄ EPUB 转换、编码与章节识别，到人工校对、多草稿书架、繁简转换、封面编辑器和 EPUB 3 / 2 导出。"
+    />
+    <meta property="og:image" content="https://txt2book.xiaoxura.com/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="txt2book：把 TXT 转成排版体面的 EPUB，纯浏览器本地完成"
+    />
+    <meta property="article:published_time" content="2026-11-04" />
+    <meta property="article:modified_time" content="%BUILD_ISO%" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="txt2book 更新日志 — TXT / EPUB / DOCX 功能演进"
+    />
+    <meta
+      name="twitter:description"
+      content="TXT / EPUB / DOCX 互转、章节识别与校对、书架、封面编辑器与多格式导出的版本变更记录。"
+    />
+    <meta name="twitter:image" content="https://txt2book.xiaoxura.com/og.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://txt2book.xiaoxura.com/#organization",
+            "name": "txt2book",
+            "url": "https://txt2book.xiaoxura.com/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://txt2book.xiaoxura.com/icon.svg"
+            },
+            "sameAs": ["https://github.com/xiaoxura/txt2book"]
+          },
+          {
+            "@type": "Person",
+            "@id": "https://txt2book.xiaoxura.com/#author",
+            "name": "xiaoxura",
+            "url": "https://github.com/xiaoxura",
+            "sameAs": ["https://github.com/xiaoxura"]
+          },
+          {
+            "@type": "BreadcrumbList",
+            "@id": "https://txt2book.xiaoxura.com/changelog.html#breadcrumb",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "首页",
+                "item": "https://txt2book.xiaoxura.com/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "更新日志",
+                "item": "https://txt2book.xiaoxura.com/changelog.html"
+              }
+            ]
+          },
+          {
+            "@type": "Article",
+            "@id": "https://txt2book.xiaoxura.com/changelog.html#article",
+            "headline": "txt2book 更新日志",
+            "description": "txt2book 的版本更新记录：TXT / EPUB / DOCX 导入与互转、章节识别与校对、书架、繁简转换、封面与排版、批量转换等功能的变更历史。",
+            "inLanguage": "zh-CN",
+            "datePublished": "2026-11-04",
+            "dateModified": "%BUILD_ISO%",
+            "mainEntityOfPage": "https://txt2book.xiaoxura.com/changelog.html",
+            "author": { "@id": "https://txt2book.xiaoxura.com/#author" },
+            "publisher": { "@id": "https://txt2book.xiaoxura.com/#organization" },
+            "image": "https://txt2book.xiaoxura.com/og.png"
+          }
+        ]
       }
     </script>
     <link rel="stylesheet" href="/src/styles.css" />
@@ -96,6 +198,11 @@
 
     <main class="changelog-page">
       <header class="changelog-hero">
+        <nav class="breadcrumb" aria-label="面包屑">
+          <a href="/">首页</a>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page">更新日志</span>
+        </nav>
         <p class="changelog-kicker">Changelog</p>
         <h1>更新日志</h1>
         <p class="changelog-lead">
@@ -104,6 +211,27 @@
       </header>
 
       <ol class="changelog-list">
+        <li class="changelog-entry">
+          <div class="changelog-rail" aria-hidden="true"><span></span></div>
+          <div class="changelog-content">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.3.0</span>
+              <time datetime="2026-11-06">2026-11-06</time>
+            </div>
+            <h2>移动端工作区、设置分层与导出闭环</h2>
+            <p>这一版不新增格式，重点是把已有能力收进更顺手的界面：手机上不再丢操作入口，设置不再一屏塞满。</p>
+            <ul class="changelog-items">
+              <li><b>移动端工作区</b>：修掉标签栏 67px 偏移遮住章节 / 预览 / 设置头部的问题；编辑时收起页脚，320px 下章节标题不再被操作按钮挤成省略号。</li>
+              <li><b>章节操作菜单</b>：升卷 / 降章 / 并入上一章 / 删除 / 重命名收进「⋯」菜单，支持键盘导航；桌面保留悬停快捷按钮。</li>
+              <li><b>设置分层</b>：书籍信息与导出常驻，排版 / 编码 / 识别规则 / 批量替换 / 本地草稿收进「排版与高级设置」；展开后吸顶并自动定位，状态会记住。桌面收起态从 1,239px 降到 469px，导出首屏可见。</li>
+              <li><b>首访公告</b>：不再自动弹窗阻塞导入，改成落地页提示条；完整公告由「使用须知」或铃铛按需打开，进入工作区后自动收起。</li>
+              <li><b>导入与保存反馈</b>：手机导入默认落到目录并提示章节数；章节头部新增「已保存 / 保存中 / 保存失败」状态；删除当前书改为两段式确认。</li>
+              <li><b>导出闭环</b>：导出完成显示文件名、大小和下一步说明，可再次下载；格式切换时自动收起旧结果。</li>
+              <li><b>发现性与无障碍</b>：新增「?」快捷键面板；搜索结果显示命中数；toast 增加 live region；浅色 muted 对比度从 3.87:1 提升到 5.38:1；顶部图标命中区增大。</li>
+              <li><b>落地页与安装</b>：格式 chips、品牌书本图标、手机端「选个文件就行」文案；支持 PWA 时页脚出现「安装到桌面」。</li>
+            </ul>
+          </div>
+        </li>
         <li class="changelog-entry">
           <div class="changelog-rail" aria-hidden="true"><span></span></div>
           <div class="changelog-content">

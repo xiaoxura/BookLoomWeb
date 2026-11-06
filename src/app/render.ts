@@ -126,9 +126,29 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
       remove.textContent = '×';
 
       actions.append(rename, level, merge, remove);
-      row.append(idx, input, actions);
+
+      const menuButton = document.createElement('button');
+      menuButton.type = 'button';
+      menuButton.className = 'row-menu-btn';
+      menuButton.dataset.menu = 'row';
+      menuButton.setAttribute('aria-label', `更多操作：${chapter.title}`);
+      menuButton.setAttribute('aria-haspopup', 'menu');
+      menuButton.setAttribute('aria-expanded', 'false');
+      menuButton.textContent = '⋯';
+
+      row.append(idx, input, actions, menuButton);
       fragment.appendChild(row);
     });
+
+    if (els.searchCount) {
+      if (query) {
+        els.searchCount.hidden = false;
+        els.searchCount.textContent = shown ? `找到 ${shown} 章` : '没有匹配的章节';
+      } else {
+        els.searchCount.hidden = true;
+        els.searchCount.textContent = '';
+      }
+    }
 
     if (!shown) {
       const empty = document.createElement('p');

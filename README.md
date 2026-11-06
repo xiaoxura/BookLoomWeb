@@ -2,7 +2,7 @@
 
 把 TXT / DOCX 小说转换成排版体面的 EPUB，也能导出 DOCX / 单文件 HTML / TXT / Markdown —— 纯浏览器本地运行，文件不出设备。
 
-当前版本 **v0.2.0**（2026-11-04），完整变更见 [changelog.html](changelog.html)。
+当前版本 **v0.3.0**（2026-11-06），完整变更见 [changelog.html](changelog.html)。
 
 在线版可直接托管到 EdgeOne Markers（或任意静态托管）；转换全部在 Web Worker 里完成，没有后端、没有上传。
 
@@ -96,11 +96,28 @@ Service Worker 只在 HTTPS 或 localhost 下生效；其余功能与域名无�
 ### 发布前自检
 
 ```bash
-npm test                 # 163 项单测 + 回归语料
+npm test                 # 全部单测 + 回归语料 + SEO 校验
 npm run build
 npm run validate         # EPUB 3 结构校验
 npm run smoke            # 真实 Chrome 端到端（含批量、草稿、EPUB 2）
 ```
+
+## SEO / GEO
+
+站点固定使用 `https://txt2book.xiaoxura.com/` 作为 canonical 域名。迁移域名时要同步修改：
+
+- `index.html` / `changelog.html`：`canonical`、`og:url`、`og:image` 与 JSON-LD 里的绝对地址
+- `public/robots.txt`、`public/sitemap.xml`、`public/llms.txt`
+
+站内约定：
+
+- 首页唯一 `h1` 是「TXT 转 EPUB」，下面保留「三步把 TXT 转成 EPUB」与「常见问题」两段静态正文；FAQ 的可见问答与 JSON-LD `FAQPage` 逐条对应
+- 结构化数据：`WebSite`、`Organization`、`Person`、`WebApplication` / `SoftwareApplication`、`HowTo`、`FAQPage`；更新日志另加 `Article` 与 `BreadcrumbList`
+- `robots.txt` 显式放行主流 AI 检索与训练爬虫，并声明 `Content-Signal`；`sitemap.xml` 只列可索引页面；`llms.txt` 给生成式引擎一份可引用的站点摘要
+- 分享图 `og.png` 为 1200×630；`npm run build` 会把版本号与构建时间注入 JSON-LD
+- `tests/seo.test.ts` 校验 canonical、JSON-LD 可解析、FAQ 与页面一致，以及 sitemap / robots / llms.txt 的地址
+
+新增可索引页面时，记得同时更新 `sitemap.xml`，并把内容写进静态 HTML（不要只靠 JS 渲染）。
 
 ## 目录结构
 
@@ -131,11 +148,17 @@ src/
 ├── changelog.ts       # 更新日志页的主题切换
 ├── notice.ts          # 站内公告：文案与弹窗（TXT / 更新日志页共用）
 └── styles.css
-tests/                 # vitest：编码、分章、规则、草稿、EPUB、语料压测
+tests/                 # vitest：编码、分章、规则、草稿、EPUB、语料压测、SEO
 scripts/
 ├── smoke.mjs          # 真实 Chrome 的端到端测试
 ├── validate-epub.mjs  # 无 Java 的 EPUB 结构校验
 └── make-og.mjs        # 生成分享图 public/og.png
+public/
+├── robots.txt         # 爬虫规则（含 AI 爬虫白名单与 Content-Signal）
+├── sitemap.xml        # 可索引页面
+├── llms.txt           # 给生成式引擎的站点摘要
+├── manifest.webmanifest
+└── sw.js              # 离线缓存
 docs/
 └── roadmap.md         # 开发计划、优先级、里程碑与不做清单
 ```

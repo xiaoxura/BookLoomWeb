@@ -19,6 +19,25 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function openAdvancedSettings(page) {
+  const hidden = await page.$eval('#settings-advanced', (el) => el.hidden === true);
+  if (hidden) await page.click('#settings-more');
+  await page.waitForFunction(
+    () => document.querySelector('#settings-advanced')?.hidden === false,
+    { timeout: 5000 },
+  );
+}
+
+async function clearCurrentBook(page) {
+  // 删除入口在高级设置里：先展开，再两段式确认
+  await openAdvancedSettings(page);
+  await page.evaluate(() => {
+    const button = document.querySelector('#clear-draft');
+    button.click();
+    button.click();
+  });
+}
+
 async function undoShortcut(page, shift = false) {
   await page.keyboard.down('Control');
   if (shift) await page.keyboard.down('Shift');
@@ -250,6 +269,7 @@ try {
   );
 
   // E2 批量替换 / 清洗：预览命中数 → 执行 → 撤销
+  await openAdvancedSettings(page);
   await page.click('#group-clean summary');
   await page.type('#replace-find', '灯塔');
   await page.type('#replace-with', '孤塔');
@@ -846,7 +866,7 @@ try {
     input.value = '清除竞争测试';
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  await page.click('#clear-draft');
+  await clearCurrentBook(page);
   await page.waitForFunction(
     () => (document.querySelector('#draft-status')?.textContent ?? '').includes('草稿已清除'),
     { timeout: 10000 },
@@ -911,7 +931,7 @@ try {
 
   // 删掉这本 EPUB 的书架记录，再清空书架给后面的页面一个干净的落地页
   const beforeEpubClear = await readSessionIds(page);
-  await page.click('#clear-draft');
+  await clearCurrentBook(page);
   await page.waitForFunction(
     () => (document.querySelector('#draft-status')?.textContent ?? '').includes('草稿已清除'),
     { timeout: 10000 },
@@ -1196,12 +1216,18 @@ try {
   );
   await degradedContext.close();
 
-  // 更新公告：首次访问自动弹出 → 关闭 → 图标重开 → Esc 关闭 → 刷新不再弹
+  // 更新公告：首访只显示提示条 → 主动打开弹窗 → 关闭 → 图标重开 → Esc → 刷新不再出现
   const noticeContext = await browser.createBrowserContext();
   const noticePage = await noticeContext.newPage();
   await noticePage.setViewport({ width: 1000, height: 800, deviceScaleFactor: 1 });
   await noticePage.goto(BASE, { waitUntil: 'networkidle0' });
-  await noticePage.waitForSelector('#notice:not([hidden])', { timeout: 8000 });
+  await noticePage.waitForSelector('#notice-banner:not([hidden])', { timeout: 8000 });
+  if (!(await noticePage.$eval('#notice', (el) => el.hidden))) {
+    throw new Error('首访公告不应再自动弹窗阻塞操作');
+  }
+  await noticePage.screenshot({ path: path.join(OUT, 'shot-notice-banner.png') });
+  await noticePage.click('#notice-banner-more');
+  await noticePage.waitForSelector('#notice:not([hidden])', { timeout: 5000 });
   const noticeTitle = await noticePage.$eval('#notice-title', (el) => el.textContent ?? '');
   if (!noticeTitle.includes('开始之前')) throw new Error(`公告标题异常：${noticeTitle}`);
   await noticePage.screenshot({ path: path.join(OUT, 'shot-notice.png') });
@@ -1220,8 +1246,11 @@ try {
     timeout: 5000,
   });
   await noticePage.reload({ waitUntil: 'networkidle0' });
-  await sleep(1400);
+  await sleep(600);
   if (!(await noticePage.$eval('#notice', (el) => el.hidden))) throw new Error('刷新后公告又自动弹出来了');
+  if (!(await noticePage.$eval('#notice-banner', (el) => el.hidden))) {
+    throw new Error('刷新后首访提示条又出现了');
+  }
   await noticeContext.close();
 
   // 更新日志页：右上角入口 → 版本条目 → 回到首页

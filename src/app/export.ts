@@ -75,12 +75,19 @@ export function buildFormattedBook(
   };
 }
 
+export interface ExportedInfo {
+  blob: Blob;
+  filename: string;
+  format: ExportFormat;
+}
+
 export interface ExportDeps {
   state: State;
   call: (payload: RequestPayload, transfer?: Transferable[]) => Promise<FromWorker>;
   setStatus: (message: string, kind?: 'normal' | 'error') => void;
   toast: (message: string, action?: { label: string; onClick: () => void }) => void;
   updateControls: () => void;
+  onExported?: (info: ExportedInfo) => void;
 }
 
 /** 按当前格式导出 EPUB / TXT / Markdown；EPUB 打包在 Worker 里完成 */
@@ -95,8 +102,10 @@ export async function exportBook(deps: ExportDeps): Promise<void> {
       return;
     }
     const blob = new Blob([toArrayBuffer(formatted.data)], { type: formatted.mime });
-    download(blob, `${sanitizeFilename(state.meta.title)}.${formatted.ext}`);
+    const filename = `${sanitizeFilename(state.meta.title)}.${formatted.ext}`;
+    download(blob, filename);
     setStatus(`已导出 · ${formatBytes(blob.size)}`);
+    deps.onExported?.({ blob, filename, format: state.exportFormat });
     toast(`已生成 ${formatted.ext.toUpperCase()}，共 ${state.chapters.length} 章`);
     return;
   }
@@ -118,8 +127,10 @@ export async function exportBook(deps: ExportDeps): Promise<void> {
     if (res.type !== 'packed') return;
 
     const blob = new Blob([toArrayBuffer(res.data)], { type: 'application/epub+zip' });
-    download(blob, `${sanitizeFilename(state.meta.title)}.epub`);
+    const filename = `${sanitizeFilename(state.meta.title)}.epub`;
+    download(blob, filename);
     setStatus(`已导出 · ${formatBytes(blob.size)}`);
+    deps.onExported?.({ blob, filename, format: 'epub' });
     toast('EPUB 已生成，拖到阅读器里看看效果吧');
   } catch (error) {
     setStatus(error instanceof Error ? error.message : '导出失败', 'error');

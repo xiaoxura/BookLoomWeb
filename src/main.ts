@@ -39,7 +39,7 @@ import {
   suggestChapterTitle,
   toggleChapterLevel,
 } from './core/edit';
-import { initNotice } from './notice';
+import { dismissNotice, initNotice } from './notice';
 import type { Chapter, ConvertMode, CoverAuthorPosition, CoverPalette, ParseResult } from './types';
 import {
   buildFormattedBook,
@@ -81,6 +81,7 @@ const render = createRenderer(els, state, () => closeCoverView());
 function setExportFormat(value: string) {
   state.exportFormat = EXPORT_FORMATS.includes(value as ExportFormat) ? (value as ExportFormat) : 'epub';
   saveExportFormat(state.exportFormat);
+  hideExportResult();
   render.controls();
 }
 
@@ -303,9 +304,14 @@ function showWorkspace() {
   els.shelf.hidden = true;
   els.dropZone.hidden = true;
   els.guide.hidden = true;
+  els.howto.hidden = true;
+  els.faq.hidden = true;
   els.privacy.hidden = true;
   els.batch.hidden = true;
-  setMobileView('preview');
+  hideExportResult();
+  dismissNotice();
+  // 校对章节是导入后的主任务，手机上先给目录，预览随时可切
+  setMobileView('chapters');
 }
 
 function showLanding() {
@@ -313,6 +319,8 @@ function showLanding() {
   els.shelf.hidden = true;
   els.dropZone.hidden = false;
   els.guide.hidden = false;
+  els.howto.hidden = false;
+  els.faq.hidden = false;
   els.privacy.hidden = false;
   els.batch.hidden = true;
   window.scrollTo(0, 0);
@@ -447,6 +455,12 @@ async function loadFile(file: File) {
     showWorkspace();
     window.scrollTo(0, 0);
     applyResult(res.result);
+    if (isMobileViewport()) {
+      toast(`已识别 ${res.result.chapters.length} 章，可在目录里校对`, {
+        label: '看预览',
+        onClick: () => setMobileView('preview', true),
+      });
+    }
     saveLastBookId(state.bookId);
     void persistSourceWithDraft(file, epoch);
   } catch (error) {
@@ -668,8 +682,45 @@ function scheduleAutoCover() {
 
 /* ---------------- 导出 ---------------- */
 
+interface ExportedFile {
+  blob: Blob;
+  filename: string;
+  format: ExportFormat;
+}
+
+let lastExport: ExportedFile | null = null;
+
+function hideExportResult(): void {
+  els.exportResult.hidden = true;
+}
+
+function showExportResult(file: ExportedFile): void {
+  lastExport = file;
+  const hint =
+    file.format === 'epub'
+      ? `EPUB ${state.epubVersion} · 可发送至 Kindle，或拷进电纸书的 Books 目录`
+      : file.format === 'docx'
+        ? 'Word 可直接打开继续编辑'
+        : file.format === 'html'
+          ? '单文件 HTML · 双击即可在浏览器阅读'
+          : file.format === 'txt'
+            ? 'UTF-8 纯文本 · 可以再拖回来重新分章'
+            : 'Markdown · 书名 #，卷 ##，章 ###';
+  els.exportResultTitle.textContent = '导出完成';
+  els.exportResultMeta.textContent = `${file.filename} · ${formatBytes(file.blob.size)} · ${hint}`;
+  els.exportResult.hidden = false;
+}
+
 function exportCurrentBook(): void {
-  void exportBookAction({ state, call, setStatus, toast, updateControls: render.controls });
+  hideExportResult();
+  void exportBookAction({
+    state,
+    call,
+    setStatus,
+    toast,
+    updateControls: render.controls,
+    onExported: showExportResult,
+  });
 }
 
 /* ---------------- 章节操作 ---------------- */
@@ -1085,6 +1136,8 @@ function startBatch(files: File[]) {
 
   els.dropZone.hidden = true;
   els.guide.hidden = true;
+  els.howto.hidden = true;
+  els.faq.hidden = true;
   els.privacy.hidden = true;
   els.workspace.hidden = true;
   els.shelf.hidden = true;
@@ -1372,6 +1425,7 @@ function enqueueDraftWrite(task: () => Promise<void>): Promise<void> {
 
 function scheduleDraftSave(delay = 1200) {
   if (!state.parsed) return;
+  setSaveBadge('saving', '保存中…', '正在把改动写入本机草稿');
   window.clearTimeout(draftTimer);
   if (draftIdle && typeof window.cancelIdleCallback === 'function') {
     window.cancelIdleCallback(draftIdle);
@@ -1413,10 +1467,12 @@ function saveDraftNow(epoch = draftEpoch): Promise<void> {
         minute: '2-digit',
       });
       setDraftStatus(`草稿已自动保存 · ${time}`);
+      setSaveBadge('saved', `已保存 ${time}`, '草稿自动保存在这台设备上');
       els.draftStatus.dataset.savedAt = String(snapshot.savedAt);
     } catch (error) {
       if (epoch !== draftEpoch) return;
       setDraftStatus(error instanceof Error ? error.message : '草稿保存失败，可能是存储空间不足', true);
+      setSaveBadge('error', '保存失败', '草稿保存失败，可能是存储空间不足');
     }
   });
 }
@@ -1488,6 +1544,16 @@ function setDraftStatus(message: string, error = false) {
   els.draftStatus.classList.toggle('error', error);
 }
 
+function setSaveBadge(
+  kind: 'idle' | 'saving' | 'saved' | 'error',
+  label: string,
+  title = '草稿自动保存在这台设备上',
+): void {
+  els.saveStatus.dataset.state = kind;
+  els.saveStatus.textContent = label;
+  els.saveStatus.title = title;
+}
+
 function applyLoadedBook(loaded: LoadedBook, sourceReady: boolean): void {
   const { draft, book } = loaded;
   state.bookId = book.id;
@@ -1544,16 +1610,16 @@ function applyLoadedBook(loaded: LoadedBook, sourceReady: boolean): void {
   const minutes = Math.max(1, Math.round((Date.now() - draft.savedAt) / 60000));
   const when = minutes < 60 ? `${minutes} 分钟前` : new Date(draft.savedAt).toLocaleString('zh-CN');
   setDraftStatus(`已恢复 ${when} 的草稿`);
+  const savedTime = new Date(draft.savedAt).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  setSaveBadge('saved', `已保存 ${savedTime}`, '草稿已保存在这台设备上');
   setStatus('已恢复上次的草稿，继续编辑即可');
   scheduleCoverPreview(0);
   saveLastBookId(book.id);
   if (!sourceReady) {
-    toast('草稿关联的原始文件缺失，重新识别前请重新拖入原文件', {
-      label: '从书架删除',
-      onClick: () => {
-        void deleteShelfBook(book.id).catch(() => undefined);
-      },
-    });
+    toast('草稿关联的原始文件缺失，请重新导入同一个文件；也可以在设置里删除这本书');
   }
 }
 
@@ -1656,6 +1722,8 @@ async function showShelf(): Promise<void> {
   els.workspace.hidden = true;
   els.dropZone.hidden = true;
   els.guide.hidden = true;
+  els.howto.hidden = true;
+  els.faq.hidden = true;
   els.privacy.hidden = true;
   els.batch.hidden = true;
   window.scrollTo(0, 0);
@@ -1860,6 +1928,40 @@ setMobileView(mobileView);
 render.paintRange(els.lineHeight);
 render.paintRange(els.paraGap);
 bindEvents(eventDeps);
+
+els.exportAgain.addEventListener('click', () => {
+  if (lastExport) download(lastExport.blob, lastExport.filename);
+});
+els.exportResultClose.addEventListener('click', hideExportResult);
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+}
+
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
+
+const hideInstallEntry = (): void => {
+  els.installApp.hidden = true;
+  els.installSep.hidden = true;
+};
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event as BeforeInstallPromptEvent;
+  els.installApp.hidden = false;
+  els.installSep.hidden = false;
+});
+
+els.installApp.addEventListener('click', () => {
+  const prompt = deferredInstallPrompt;
+  if (!prompt) return;
+  deferredInstallPrompt = null;
+  void prompt.prompt();
+  hideInstallEntry();
+});
+
+window.addEventListener('appinstalled', hideInstallEntry);
+
 initNotice();
 render.applyLayoutToPreview();
 renderRules();

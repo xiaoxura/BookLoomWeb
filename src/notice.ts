@@ -45,6 +45,17 @@ const NOTICE = {
 let initialized = false;
 let trigger: HTMLElement | null = null;
 
+/** 用户已经开始使用工具时，首访提示条不必再出现 */
+export function dismissNotice(): void {
+  try {
+    localStorage.setItem(NOTICE_KEY, NOTICE.id);
+  } catch {
+    /* 隐私模式下写入失败就让它下次再出现 */
+  }
+  document.querySelector<HTMLElement>('#notice-banner')?.setAttribute('hidden', '');
+  document.querySelector<HTMLElement>('#notice-btn')?.classList.remove('has-dot');
+}
+
 function make<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className?: string,
@@ -113,6 +124,10 @@ export function initNotice(): void {
   const overlay = buildNotice();
   document.body.append(overlay);
 
+  const banner = document.querySelector<HTMLElement>('#notice-banner');
+  const bannerMore = document.querySelector<HTMLButtonElement>('#notice-banner-more');
+  const bannerClose = document.querySelector<HTMLButtonElement>('#notice-banner-close');
+
   const card = overlay.querySelector<HTMLElement>('#notice-card');
   const closeButton = overlay.querySelector<HTMLButtonElement>('#notice-close');
   const okButton = overlay.querySelector<HTMLButtonElement>('#notice-ok');
@@ -135,10 +150,15 @@ export function initNotice(): void {
     button.classList.remove('has-dot');
   };
 
+  const hideBanner = (): void => {
+    if (banner) banner.hidden = true;
+  };
+
   const open = (from: HTMLElement | null): void => {
     if (!overlay.hidden) return;
     trigger = from;
     overlay.hidden = false;
+    hideBanner();
     document.body.classList.add('notice-open');
     markSeen();
     // 焦点给弹窗本身而不是按钮，避免一打开就出现一圈焦点环
@@ -162,6 +182,11 @@ export function initNotice(): void {
   button.addEventListener('click', () => open(button));
   closeButton.addEventListener('click', close);
   okButton.addEventListener('click', close);
+  bannerMore?.addEventListener('click', () => open(button));
+  bannerClose?.addEventListener('click', () => {
+    markSeen();
+    hideBanner();
+  });
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) close();
   });
@@ -171,9 +196,7 @@ export function initNotice(): void {
 
   if (!seen()) {
     button.classList.add('has-dot');
-    window.setTimeout(() => {
-      if (!overlay.hidden) return;
-      if (!seen()) open(null);
-    }, 700);
+    // 首访只显示一条不挡操作的提示，完整公告由用户主动打开
+    if (banner) banner.hidden = false;
   }
 }

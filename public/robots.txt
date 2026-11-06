@@ -1,2 +1,53 @@
+# txt2book：允许搜索引擎与 AI 助手抓取公开页面
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
 User-agent: *
 Allow: /
+
+# 生成式搜索 / AI 检索与训练爬虫
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: meta-externalagent
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+Sitemap: https://txt2book.xiaoxura.com/sitemap.xml
