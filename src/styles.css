@@ -2982,10 +2982,10 @@ body:has(#shelf:not([hidden])) #settings-btn {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 12px;
+    gap: 8px;
     min-height: 0;
-    /* 吸顶顶栏 + 吸顶 tabs 一起让位 */
-    scroll-margin-top: 124px;
+    /* 只需给 sticky 顶栏让位（约 52px） */
+    scroll-margin-top: 60px;
   }
 
   /* 手机端不摆右栏：设置走顶栏齿轮，导出走同样的弹窗 */
@@ -3019,13 +3019,11 @@ body:has(#shelf:not([hidden])) #settings-btn {
   }
 
   .mobile-tabs {
-    position: sticky;
-    /* 吸顶时让出 sticky 顶栏的高度（顶栏约 52px） */
-    top: 56px;
-    z-index: 18;
+    /* 常规流内排版：不悬浮、不盖面板内容；页内滚动时自然收起 */
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px;
+    margin-top: 2px;
     padding: 4px;
     border: 1px solid var(--line);
     border-radius: 12px;
