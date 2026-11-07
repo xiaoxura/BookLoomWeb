@@ -19,11 +19,12 @@ export const DEFAULT_LAYOUT: LayoutOptions = {
 const LAYOUT_KEY = 'txt2book.layout.v1';
 const EPUB_VERSION_KEY = 'txt2book.epubVersion';
 const EXPORT_FORMAT_KEY = 'txt2book.exportFormat';
+const LIST_PAGE_SIZE_KEY = 'txt2book.listPageSize';
 const THEME_KEY = 'txt2book.theme';
 const LAST_BOOK_KEY = 'txt2book.lastBook.v1';
 
 export type ThemeMode = 'light' | 'dark';
-export type MobileView = 'chapters' | 'preview' | 'settings';
+export type MobileView = 'chapters' | 'preview';
 export type ExportFormat = 'epub' | 'txt' | 'md' | 'docx' | 'html';
 
 export const EXPORT_FORMATS: ExportFormat[] = ['epub', 'docx', 'html', 'txt', 'md'];
@@ -100,8 +101,6 @@ export interface State {
   selectedParagraph: number | null;
   diagnostics: HeadingCandidate[];
   audit: AuditReport;
-  diagDismissed: boolean;
-  diagOpen: boolean;
   idSeed: number;
   filename: string;
   rules: RuleSpec | null;
@@ -118,6 +117,16 @@ export interface State {
   bookId: string | null;
   /** 书架卡片的封面缩略图（data URL） */
   coverThumb: string | null;
+  /** 目录渲染窗口的起始下标：长书只渲染可见区，切章超出时整体挪动窗口 */
+  listWindowStart: number;
+  /** 批量移动模式：开启后点击列表选中的章节 id 集 */
+  multiSelect: string[];
+  /** 是否处于批量移动模式（未选中任何项时也显示操作条） */
+  multiMode: boolean;
+  /** 目录每页章数（分页条可调 100 / 200 / 400 / 800） */
+  listPageSize: number;
+  /** 正文编辑态：当前正在编辑段落（新增段落也是空文本编辑） */
+  editingParagraph: { chapterId: string; paragraphIndex: number } | null;
 }
 
 export function loadLayout(): LayoutOptions {
@@ -161,6 +170,23 @@ export function saveEpubVersion(version: 2 | 3): void {
   }
 }
 
+export function loadListPageSize(): number {
+  try {
+    const raw = Number(localStorage.getItem(LIST_PAGE_SIZE_KEY));
+    return [100, 200, 400, 800].includes(raw) ? raw : 400;
+  } catch {
+    return 400;
+  }
+}
+
+export function saveListPageSize(size: number): void {
+  try {
+    localStorage.setItem(LIST_PAGE_SIZE_KEY, String(size));
+  } catch {
+    /* 隐私模式下可能写入失败 */
+  }
+}
+
 export function loadLastBookId(): string | null {
   try {
     return localStorage.getItem(LAST_BOOK_KEY);
@@ -195,8 +221,6 @@ export function createInitialState(): State {
     selectedParagraph: null,
     diagnostics: [],
     audit: auditChapters([]),
-    diagDismissed: false,
-    diagOpen: true,
     idSeed: 0,
     filename: '',
     rules: null,
@@ -210,5 +234,10 @@ export function createInitialState(): State {
     sourceId: null,
     bookId: null,
     coverThumb: null,
+    listWindowStart: 0,
+    multiSelect: [],
+    multiMode: false,
+    listPageSize: loadListPageSize(),
+    editingParagraph: null,
   };
 }

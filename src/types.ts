@@ -13,6 +13,8 @@ export interface BookMeta {
   language: string;
   /** 书籍简介，写入 EPUB 的 dc:description */
   description?: string;
+  /** 连载状态（连载中 / 已完结）；从卷首信息自动识别 */
+  status?: string;
   /** 系列名，EPUB 3 用 belongs-to-collection 输出 */
   series?: string;
   publisher?: string;

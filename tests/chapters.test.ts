@@ -54,6 +54,34 @@ describe('章节识别', () => {
     expect(chapters[1].paragraphs).toEqual([]);
   });
 
+  it('问号结尾的短标题与区间章号能识别', () => {
+    const merged = [
+      '第848章 背叛',
+      '她盯着他不说话。',
+      '',
+      '第849章教训小媳妇？',
+      '元初一出现，立马就被一群人给围住了。',
+      '',
+      '第1044章 现代番',
+      '她回到了座位上。',
+      '',
+      '第1045~1046章现代番，一百三十',
+      '拍卖师暧昧一笑。',
+      '',
+    ];
+    const headings = detectHeadings(merged);
+    expect(headings.map((h) => h.title)).toEqual([
+      '第848章 背叛',
+      '第849章 教训小媳妇？',
+      '第1044章 现代番',
+      '第1045~1046章 现代番，一百三十',
+    ]);
+    const { chapters } = chaptersFromText(merged.join('\n'), { filterAds: false });
+    expect(chapters.map((chapter) => chapter.title)).toContain('第1045~1046章 现代番，一百三十');
+    // 这些行不该整体被当作标题（句号 / 省略号 / 超长问叹句仍是正文）
+    expect(detectHeadings(['他翻到第15章剧情很刺激。', '第1章讲了很多关于信仰的思考……'])).toHaveLength(0);
+  });
+
   it('真实示例文件能切出 7 章并过滤广告', async () => {
     const fs = await import('node:fs');
     const text = fs.readFileSync('public/sample.txt', 'utf8');

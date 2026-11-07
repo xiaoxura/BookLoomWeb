@@ -203,7 +203,7 @@ txt2book 目前已经打通「导入 → 识别 → 校对 → 排版 → 导出
 
 #### T3 国际化（P2，L）
 
-- **现状**：文案硬编码在 `index.html`、`changelog.html`、`main.ts`、`notice.ts`。
+- **现状**：文案硬编码在 `index.html`、`main.ts`、`notice.ts`。
 - **目标**：至少支持中文 / English。
 - **方案**：抽取 `src/i18n/zh-CN.ts` 与 `en.ts`，按 `navigator.language` 选择；HTML 静态文案改为占位或 JS 注入；日期/数字用 `Intl`。
 - **风险**：文案量大，建议先做工作区（不翻译落地页指南）。
@@ -277,7 +277,7 @@ M3 已全部实现，随 v0.1.0 发布：
 - **草稿 schema**：M2 起新草稿写 `version: 3`（增加 `bookId`）；读取兼容 v1 / v2，旧记录由 `ensureMigrated()` 原子迁移。迁移失败保留旧数据并提示。
 - **LayoutOptions**：继续用可选字段扩展（已有 `separateChapterNumber`、`customCss`、`coverStyle`），旧草稿缺字段时取默认值。
 - **localStorage 键**：`txt2book.layout.v1`、`txt2book.epubVersion`、`txt2book.exportFormat`、`txt2book.theme`、`txt2book.noticeSeen`、`txt2book.lastBook.v1`；新增键统一加前缀并写读取兜底。
-- **版本发布**：`npm version` 更新版本号，`changelog.html` 增加一条记录（当前版本由构建时注入），README 同步功能说明。
+- **版本发布**：`npm version` 更新版本号，README 同步功能说明；版本与构建时间由构建脚本注入页面 JSON-LD（站点已不再维护独立更新日志页）。
 
 ## 6. 测试策略
 

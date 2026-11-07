@@ -53,6 +53,8 @@ export interface BookRecord {
   /** 书架缩略图（data URL），没有封面时为 null */
   coverThumb: string | null;
   hasSource: boolean;
+  /** 软删除标记：删除先打标，延迟清理，给「撤销」留窗口 */
+  deletedAt?: number;
 }
 
 export interface LoadedBook {
@@ -253,7 +255,7 @@ export async function listBooks(): Promise<BookRecord[]> {
     requestOf<BookRecord[]>(transaction.objectStore(BOOKS_STORE).getAll()),
   );
   return books
-    .filter((book) => book && typeof book.id === 'string')
+    .filter((book) => book && typeof book.id === 'string' && !book.deletedAt)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
@@ -319,6 +321,18 @@ export async function saveBookSource(source: SourceRecord): Promise<void> {
   });
 }
 
+/** 只读原文，不加载整份草稿；用于取消/批量后把原文件塞回 Worker */
+export async function loadBookSource(bookId: string): Promise<SourceRecord | null> {
+  await ensureMigrated();
+  const source = await withTransaction('readonly', [DRAFT_STORE], (transaction) =>
+    requestOf<SourceRecord | undefined>(
+      transaction.objectStore(DRAFT_STORE).get(`${SOURCE_PREFIX}${bookId}`),
+    ),
+  );
+  if (!source || !source.data || typeof source.name !== 'string') return null;
+  return source;
+}
+
 export async function renameBook(bookId: string, title: string): Promise<void> {
   const nextTitle = title.trim();
   if (!nextTitle) return;
@@ -351,6 +365,50 @@ export async function deleteBook(bookId: string): Promise<void> {
     drafts.delete(`${FONT_PREFIX}${bookId}`);
     transaction.objectStore(BOOKS_STORE).delete(bookId);
   });
+}
+
+/** 软删除：只打标记，草稿和原文原地不动，撤销时把标记去掉即可 */
+export async function markBookDeleted(bookId: string): Promise<void> {
+  await ensureMigrated();
+  await withTransaction('readwrite', [BOOKS_STORE], async (transaction) => {
+    const books = transaction.objectStore(BOOKS_STORE);
+    const book = await requestOf<BookRecord | undefined>(books.get(bookId));
+    if (!book) return;
+    book.deletedAt = Date.now();
+    books.put(book);
+  });
+}
+
+/** 撤销软删除 */
+export async function restoreBook(bookId: string): Promise<boolean> {
+  await ensureMigrated();
+  return withTransaction('readwrite', [BOOKS_STORE], async (transaction) => {
+    const books = transaction.objectStore(BOOKS_STORE);
+    const book = await requestOf<BookRecord | undefined>(books.get(bookId));
+    if (!book) return false;
+    delete book.deletedAt;
+    books.put(book);
+    return true;
+  });
+}
+
+/** 彻底清掉打过删除标记且超过保留期的书（撤销窗口只在本会话内有效） */
+export async function purgeExpiredDeletedBooks(maxAgeMs = 24 * 60 * 60 * 1000): Promise<void> {
+  let expired: string[] = [];
+  try {
+    const all = await withTransaction('readonly', [BOOKS_STORE], (transaction) =>
+      requestOf<BookRecord[]>(transaction.objectStore(BOOKS_STORE).getAll()),
+    );
+    const cutoff = Date.now() - maxAgeMs;
+    expired = all
+      .filter((book) => book?.deletedAt && book.deletedAt <= cutoff)
+      .map((book) => book.id);
+  } catch {
+    return;
+  }
+  for (const id of expired) {
+    await deleteBook(id).catch(() => undefined);
+  }
 }
 
 /** 字体单独存一条，避免每次自动保存都把几 MB 的字体重写一遍 */

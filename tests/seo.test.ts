@@ -5,10 +5,9 @@ import { describe, expect, it } from 'vitest';
 const SITE = 'https://txt2book.xiaoxura.com';
 
 const html = readFileSync('index.html', 'utf8');
-const changelog = readFileSync('changelog.html', 'utf8');
 const robots = readFileSync('public/robots.txt', 'utf8');
 const sitemap = readFileSync('public/sitemap.xml', 'utf8');
-const llms = readFileSync('public/llms.txt', 'utf8');
+const llms = readFileSync('public/llms.txt', 'utf8').replace(/\r\n/g, '\n');
 const ogImage = readFileSync('public/og.png');
 
 interface SchemaNode {
@@ -46,40 +45,27 @@ function metaContent(page: string, attribute: 'name' | 'property', key: string):
   return pattern.exec(page)?.[1] ?? '';
 }
 
-function titleOf(page: string): string {
-  return text(/<title>([\s\S]*?)<\/title>/i.exec(page)?.[1]);
-}
-
 describe('页面基础 SEO', () => {
-  it('每个页面只有唯一 h1', () => {
-    for (const page of [html, changelog]) {
-      expect(page.match(/<h1[\s>]/g)).toHaveLength(1);
-    }
+  it('首页只有唯一 h1', () => {
+    expect(html.match(/<h1[\s>]/g)).toHaveLength(1);
   });
 
   it('标题与描述唯一且长度合理', () => {
-    expect(titleOf(html)).not.toBe(titleOf(changelog));
-    for (const page of [html, changelog]) {
-      const description = metaContent(page, 'name', 'description');
-      expect(description.length).toBeGreaterThanOrEqual(60);
-      expect(description.length).toBeLessThanOrEqual(200);
-    }
+    const description = metaContent(html, 'name', 'description');
+    expect(description.length).toBeGreaterThanOrEqual(60);
+    expect(description.length).toBeLessThanOrEqual(200);
   });
 
   it('canonical 与 og:url 指向正式域名', () => {
     expect(html).toContain(`<link rel="canonical" href="${SITE}/" />`);
-    expect(changelog).toContain(`<link rel="canonical" href="${SITE}/changelog.html" />`);
     expect(metaContent(html, 'property', 'og:url')).toBe(`${SITE}/`);
-    expect(metaContent(changelog, 'property', 'og:url')).toBe(`${SITE}/changelog.html`);
   });
 
   it('社交分享图使用绝对地址并声明尺寸', () => {
-    for (const page of [html, changelog]) {
-      expect(metaContent(page, 'property', 'og:image')).toBe(`${SITE}/og.png`);
-      expect(metaContent(page, 'property', 'og:image:width')).toBe('1200');
-      expect(metaContent(page, 'property', 'og:image:height')).toBe('630');
-      expect(metaContent(page, 'name', 'twitter:card')).toBe('summary_large_image');
-    }
+    expect(metaContent(html, 'property', 'og:image')).toBe(`${SITE}/og.png`);
+    expect(metaContent(html, 'property', 'og:image:width')).toBe('1200');
+    expect(metaContent(html, 'property', 'og:image:height')).toBe('630');
+    expect(metaContent(html, 'name', 'twitter:card')).toBe('summary_large_image');
     expect(ogImage.readUInt32BE(16)).toBe(1200);
     expect(ogImage.readUInt32BE(20)).toBe(630);
   });
@@ -87,7 +73,6 @@ describe('页面基础 SEO', () => {
 
 describe('结构化数据', () => {
   const homeNodes = graphOf(html);
-  const changelogNodes = graphOf(changelog);
 
   it('首页包含站点、应用、HowTo 与 FAQ 节点', () => {
     for (const type of ['WebSite', 'Organization', 'Person', 'WebApplication', 'HowTo', 'FAQPage']) {
@@ -124,24 +109,17 @@ describe('结构化数据', () => {
     expect(visible.length).toBeGreaterThanOrEqual(6);
     expect(schema).toEqual(visible);
   });
-
-  it('更新日志包含 Article 与 BreadcrumbList', () => {
-    expect(findNode(changelogNodes, 'Article')).toBeDefined();
-    expect(findNode(changelogNodes, 'BreadcrumbList')).toBeDefined();
-    expect(changelog).toContain('class="breadcrumb"');
-  });
 });
 
 describe('抓取资产', () => {
   it('sitemap 可解析且只包含正式域名', () => {
     const parsed = new XMLParser().parse(sitemap) as {
-      urlset?: { url?: Array<{ loc: string }> };
+      urlset?: { url?: Array<{ loc: string }> | { loc: string } };
     };
-    const entries = parsed.urlset?.url ?? [];
-    expect(entries.map((entry) => entry.loc)).toEqual([
-      `${SITE}/`,
-      `${SITE}/changelog.html`,
-    ]);
+    const raw = parsed.urlset?.url ?? [];
+    // 只有一个 URL 时 fast-xml-parser 不再返回数组
+    const list = Array.isArray(raw) ? raw : [raw];
+    expect(list.map((entry) => entry.loc)).toEqual([`${SITE}/`]);
   });
 
   it('robots 允许主流 AI 爬虫并声明 sitemap', () => {
@@ -153,9 +131,8 @@ describe('抓取资产', () => {
   });
 
   it('llms.txt 提供可引用的站点摘要', () => {
-    expect(llms.startsWith('# txt2book\n')).toBe(true);
+    expect(llms.startsWith('# BookLoom\n')).toBe(true);
     expect(llms).toContain(`(${SITE}/)`);
-    expect(llms).toContain(`(${SITE}/changelog.html)`);
     expect(llms).toContain('## 常见问题');
   });
 

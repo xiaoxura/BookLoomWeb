@@ -3,13 +3,18 @@
  * 用法：先 `npm run build && npx vite preview --port 4173`，再 `node scripts/smoke.mjs`。
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
 import puppeteer from 'puppeteer-core';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:4173/';
 const OUT = path.resolve('samples');
-const DOWNLOADS = '/tmp/txt2book-downloads';
+// Linux CI 用 /tmp；Windows 上 Chrome 无法写入 "/tmp"，换成系统临时目录
+const DOWNLOADS =
+  process.platform === 'win32'
+    ? path.join(os.tmpdir(), 'txt2book-downloads')
+    : '/tmp/txt2book-downloads';
 
 fs.rmSync(DOWNLOADS, { recursive: true, force: true });
 fs.mkdirSync(DOWNLOADS, { recursive: true });
@@ -19,18 +24,35 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function openAdvancedSettings(page) {
-  const hidden = await page.$eval('#settings-advanced', (el) => el.hidden === true);
-  if (hidden) await page.click('#settings-more');
+async function openRailDialog(page, pane) {
+  const trigger = pane === 'export' ? '#rail-export' : `#settings-rail [data-pane="${pane}"]`;
+  await page.click(trigger);
   await page.waitForFunction(
-    () => document.querySelector('#settings-advanced')?.hidden === false,
-    { timeout: 5000 },
+    (id) => document.querySelector(`#dialog-${id}`)?.hidden === false,
+    {},
+    pane,
   );
 }
 
+async function closeDialog(page, pane) {
+  await page.click(`#dialog-${pane}-close`);
+  await page.waitForFunction(
+    (id) => document.querySelector(`#dialog-${id}`)?.hidden === true,
+    {},
+    pane,
+  );
+}
+
+async function closeDiagDialog(page) {
+  await page.click('#diag-dialog-close');
+  await page.waitForFunction(() => document.querySelector('#diag-dialog')?.hidden === true, {
+    timeout: 5000,
+  });
+}
+
 async function clearCurrentBook(page) {
-  // 删除入口在高级设置里：先展开，再两段式确认
-  await openAdvancedSettings(page);
+  // 删除入口在「书籍信息」弹窗里：打开，再两段式确认
+  await openRailDialog(page, 'info');
   await page.evaluate(() => {
     const button = document.querySelector('#clear-draft');
     button.click();
@@ -84,7 +106,9 @@ async function readSessionIds(page) {
       return { bookCount: 0, bookIds: [], bookTitles: [] };
     }
     const books = await read(db, 'books', (store) => store.getAll());
-    const sorted = books.sort((a, b) => b.updatedAt - a.updatedAt);
+    // 软删除只是打了 deletedAt 标记的记录，应用语义里它已经不在书架上
+    const active = books.filter((book) => !book.deletedAt);
+    const sorted = active.sort((a, b) => b.updatedAt - a.updatedAt);
     const latest = sorted[0];
     if (!latest) {
       db.close();
@@ -138,6 +162,11 @@ try {
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(`console: ${message.text()}`);
   });
+  // 应用现在有「未保存改动」的 beforeunload 保护，这个弹窗 puppeteer 不会自动关掉
+  page.on('dialog', async (dialog) => {
+    if (dialog.type() === 'beforeunload') await dialog.accept();
+    else await dialog.dismiss();
+  });
 
   const client = await page.createCDPSession();
   await client.send('Browser.setDownloadBehavior', {
@@ -149,11 +178,16 @@ try {
   await page.goto(BASE, { waitUntil: 'networkidle0', timeout: 30000 });
   await page.screenshot({ path: path.join(OUT, 'shot-landing.png'), fullPage: true });
 
-  const footerText = await page.$eval('.footer', (el) => el.textContent ?? '');
-  if (/v\d+\.\d+\.\d+/.test(footerText)) throw new Error(`页脚不应再显示版本号：${footerText}`);
-  if (/更新于 \d{4}-\d{2}-\d{2}/.test(footerText)) throw new Error(`页脚不应再显示构建时间：${footerText}`);
-  if (!footerText.includes('MIT 开源项目')) throw new Error(`页脚缺少开源声明：${footerText}`);
-  if (footerText.includes('%')) throw new Error(`页脚占位符未替换：${footerText}`);
+  // 页脚已移除，开源地址指向改名后的仓库
+  if (await page.$('.footer')) throw new Error('页脚仍存在，应已删除');
+  const githubHref = await page.$eval('#github-link', (el) => el.getAttribute('href'));
+  if (!githubHref.includes('github.com/xiaoxura/BookLoomWeb')) {
+    throw new Error(`开源地址没有换成新仓库：${githubHref}`);
+  }
+  const bodyText = await page.evaluate(() => document.body.textContent ?? '');
+  if (bodyText.includes('%APP_VERSION%') || bodyText.includes('%BUILD_ISO%')) {
+    throw new Error('页面存在未替换的占位符');
+  }
 
   const initialTheme = await page.evaluate(() => document.documentElement.dataset.theme);
   if (initialTheme !== 'light' && initialTheme !== 'dark') throw new Error(`初始主题异常：${initialTheme}`);
@@ -209,13 +243,28 @@ try {
   await page.click('#toast button');
   await page.waitForFunction(() => document.querySelectorAll('.chapter-row').length === 7, { timeout: 10000 });
 
-  // E1 撤销 / 重做：删除最后一章 → Ctrl+Z → Shift+Ctrl+Z → Ctrl+Z
+  // E1 撤销 / 重做：删除最后一章 → ⋯菜单 → 删除确认 → Ctrl+Z → Shift+Ctrl+Z → Ctrl+Z
   const draftStampBeforeDelete = await page.$eval('#draft-status', (el) => el.dataset.savedAt ?? '');
   await page.evaluate(() => {
     const rows = [...document.querySelectorAll('.chapter-row')];
-    rows[rows.length - 1].querySelector('[data-act="delete"]').click();
+    rows[rows.length - 1].querySelector('.row-menu-btn').click();
   });
-  await page.waitForFunction(() => document.querySelectorAll('.chapter-row').length === 6, { timeout: 10000 });
+  await page.waitForSelector('#row-menu:not([hidden])', { timeout: 5000 });
+  await page.evaluate(() => {
+    // 两段式确认：第一次只武装按钮，第二次才执行（菜单保持打开）
+    const clickDelete = () =>
+      [...document.querySelectorAll('#row-menu [data-act="delete"]')].forEach((button) => button.click());
+    clickDelete();
+    clickDelete();
+  });
+  try {
+    await page.waitForFunction(() => document.querySelectorAll('.chapter-row').length === 6, { timeout: 10000 });
+  } catch {
+    await page.screenshot({ path: path.join(OUT, 'debug-delete.png') });
+    const menuAct = await page.$eval('#row-menu', (el) => ({ hidden: el.hidden, items: [...el.querySelectorAll('button')].map((b) => `${b.dataset.act}:${b.dataset.confirm ?? ''}:${b.disabled ? 'd' : ''}`) }));
+    console.log('DEBUG delete state:', JSON.stringify(menuAct));
+    throw new Error('删除后行数没变成 6');
+  }
   const deleteToast = await page.$eval('#toast', (el) => el.textContent ?? '');
   if (!deleteToast.includes('已删除')) throw new Error(`删除后没有提示：${deleteToast}`);
 
@@ -245,11 +294,11 @@ try {
     throw new Error('回到初始状态后重做按钮不可用');
   }
 
-  // 改标题也进历史：✎ 进入编辑 → 改值 → 失焦 → Ctrl+Z 还原
+  // 改标题也进历史：双击标题进入编辑 → 改值 → 失焦 → Ctrl+Z 还原
   const firstTitle = await page.$eval('.chapter-row .ch-title', (el) => el.value);
   await page.evaluate(() => {
-    const row = document.querySelector('.chapter-row');
-    row.querySelector('[data-act="rename"]').click();
+    const input = document.querySelector('.chapter-row .ch-title');
+    input.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   });
   await page.evaluate(() => {
     const input = document.querySelector('.chapter-row .ch-title.editing');
@@ -269,8 +318,7 @@ try {
   );
 
   // E2 批量替换 / 清洗：预览命中数 → 执行 → 撤销
-  await openAdvancedSettings(page);
-  await page.click('#group-clean summary');
+  await openRailDialog(page, 'rules');
   await page.type('#replace-find', '灯塔');
   await page.type('#replace-with', '孤塔');
   await page.select('#replace-scope', 'body');
@@ -304,6 +352,7 @@ try {
   );
   const afterUndoHits = await page.$eval('#replace-results', (el) => el.textContent ?? '');
   if (!afterUndoHits.includes('灯塔')) throw new Error('撤销后替换内容没有恢复');
+  await closeDialog(page, 'rules');
 
   // E5 快捷键：↓ / K 切章、/ 聚焦搜索、Esc 关闭浮层、Ctrl+S 导出
   const activeHeading = () => page.$eval('#preview h1, #preview h2', (el) => el.textContent ?? '');
@@ -378,12 +427,13 @@ try {
     { timeout: 10000 },
   );
 
+  // 元数据 / 封面都在「书籍信息」弹窗里，先打开
+  await openRailDialog(page, 'info');
   await page.type('#meta-author', '林间');
   await page.waitForFunction(() => Boolean(document.querySelector('#cover-thumb img')), { timeout: 15000 });
   await sleep(700);
 
   // X1 元数据：简介 / 系列 / 出版社 / 标签 / 出版日期
-  await page.click('.meta-more summary');
   await page.type('#meta-description', '一座灯塔与一封没有寄出的信。');
   await page.type('#meta-series', '雾港三部曲');
   await page.type('#meta-publisher', '潮声出版社');
@@ -394,7 +444,6 @@ try {
   });
 
   // X3 封面编辑器：配色 / 字号 / 作者位置 → 实时预览与导出封面一致
-  await page.click('.cover-editor summary');
   await page.select('#cover-palette', 'sea');
   await page.select('#cover-author-position', 'top');
   await page.$eval('#cover-title-scale', (el) => {
@@ -458,6 +507,7 @@ try {
       document.querySelector('#cover-title-scale-value')?.textContent === '100%',
     { timeout: 5000 },
   );
+  await closeDialog(page, 'info');
 
   await page.evaluate(() => {
     const rows = Array.from(document.querySelectorAll('.chapter-row'));
@@ -471,6 +521,7 @@ try {
   await page.screenshot({ path: path.join(OUT, 'shot-workspace.png') });
 
   // 新增的排版开关：章号分离 + 附加 CSS
+  await openRailDialog(page, 'layout');
   await page.evaluate(() => {
     const css = document.querySelector('#custom-css');
     css.value = 'p { letter-spacing: 0.02em; }';
@@ -479,7 +530,9 @@ try {
     sep.checked = true;
     sep.dispatchEvent(new Event('change', { bubbles: true }));
   });
+  await closeDialog(page, 'layout');
 
+  await openRailDialog(page, 'export');
   await page.click('#export');
   const file = await waitForDownload(DOWNLOADS, ['.epub'], 30000);
   const bytes = new Uint8Array(fs.readFileSync(file));
@@ -592,16 +645,26 @@ try {
   }
   fs.rmSync(file2);
 
-  // 脏数据回归：站点水印与第一章标题粘在同一行
+  await closeDialog(page, 'export');
+
+  // 脏数据回归：站点水印与第一章标题粘在同一行；
+  // 卷首的『状态/内容简介』信息章会自动识别进书籍信息，整章不再显示
   const input = await page.$('#file-input');
   await input.uploadFile(path.resolve('tests/fixtures/messy.txt'));
-  await page.waitForFunction(() => document.querySelectorAll('.chapter-row').length === 4, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelectorAll('.chapter-row').length === 3, { timeout: 20000 });
   const messyTitles = await page.$$eval('.ch-title', (els) => els.map((el) => el.value));
-  if (messyTitles[1] !== '第1章 穿越重生') throw new Error(`第一章标题未救回：${messyTitles.join(' / ')}`);
+  if (messyTitles[0] !== '第1章 穿越重生') throw new Error(`第一章标题未救回：${messyTitles.join(' / ')}`);
+  if (messyTitles.some((t) => t.includes('内容简介'))) throw new Error('简介卷首章没有被隐藏');
   const messyPreview = await page.$eval('#preview', (el) => el.textContent ?? '');
-  if (messyPreview.includes('尘屑飞扬')) throw new Error('第一章正文仍被并入卷首');
+  // 简介章被隐藏后，默认打开的第一章就是「第1章 穿越重生」，正文应当正常展示
+  if (!messyPreview.includes('尘屑飞扬')) throw new Error('第一章正文没有进预览');
+  if (messyPreview.includes('萌师在上')) throw new Error('卷首简介还残留显示');
   const guessedAuthor = await page.$eval('#meta-author', (el) => el.value);
   if (guessedAuthor !== '风与天幕') throw new Error(`作者未自动识别：${guessedAuthor}`);
+  const intactStatus = await page.$eval('#meta-status', (el) => el.value);
+  if (intactStatus !== '已完结') throw new Error(`连载状态没有识别：${intactStatus}`);
+  const intactIntro = await page.$eval('#meta-description', (el) => el.value);
+  if (!intactIntro.includes('穿进修仙小说')) throw new Error(`简介没有识别：${intactIntro.slice(0, 40)}`);
   await page.screenshot({ path: path.join(OUT, 'shot-messy.png') });
 
   // F1 书架：两本书切换、重命名、删除；切换不能丢章节
@@ -684,10 +747,17 @@ try {
   await page.click('#shelf-close');
   await page.waitForSelector('#workspace:not([hidden])', { timeout: 10000 });
 
-  // 诊断：漏掉的标题可以一键设为标题
+  // 诊断：漏掉的标题可以一键设为标题（现在在体检弹窗里查看）
   await input.uploadFile(path.resolve('tests/fixtures/missed.txt'));
   await page.waitForFunction(() => document.querySelectorAll('.chapter-row').length === 2, { timeout: 20000 });
-  await page.waitForSelector('#diagnostics:not([hidden])', { timeout: 10000 });
+  const diagBadge = await page.$eval('#diag-badge', (el) => el.textContent ?? '');
+  if (!diagBadge.trim()) throw new Error(`体检按钮徽标没有数量：${diagBadge}`);
+  await page.click('#diag-btn');
+  await page.waitForSelector('#diag-dialog:not([hidden])', { timeout: 10000 });
+  await page.waitForFunction(
+    () => (document.querySelector('#diagnostics')?.hidden ?? true) === false,
+    { timeout: 10000 },
+  );
   const diagCount = await page.$$eval('.diag-item', (els) => els.length);
   if (diagCount !== 1) throw new Error(`诊断数量不对：${diagCount}`);
   await page.screenshot({ path: path.join(OUT, 'shot-diagnostics.png') });
@@ -722,6 +792,7 @@ try {
     () => [...document.querySelectorAll('.ch-title')].some((el) => el.value === '第9章 决战'),
     { timeout: 10000 },
   );
+  await closeDiagDialog(page);
 
   // 本地草稿：改标题 → 等自动保存 → 刷新恢复 → 清除 → 刷新回到首页
   const previousSavedAt = await page.$eval('#draft-status', (el) => el.dataset.savedAt ?? '');
@@ -757,11 +828,13 @@ try {
     { timeout: 15000 },
   );
   if (await page.$eval('#reparse', (el) => el.disabled)) throw new Error('恢复草稿后「重新识别」被禁用');
+  await openRailDialog(page, 'rules');
   await page.click('#reparse');
   await page.waitForFunction(
     () => (document.querySelector('#status')?.textContent ?? '').includes('识别完成'),
     { timeout: 30000 },
   );
+  await closeDialog(page, 'rules');
 
   // 换书时模拟原文写入失败：新草稿不能继续使用上一本的原文
   await page.evaluate(() => {
@@ -779,11 +852,14 @@ try {
   await gbkInput.uploadFile(path.resolve('tests/fixtures/gbk.txt'));
   await page.waitForFunction(
     () => {
-      const stats = document.querySelector('#stats')?.textContent ?? '';
-      return stats.includes('GB18030') && stats.includes('3 章');
+      // 编码不再显示在左栏统计里；改从编码下拉的自动检测结果断言
+      return (document.querySelector('#stats')?.textContent ?? '').includes('3 章');
     },
     { timeout: 30000 },
   );
+  if ((await page.$eval('#encoding', (el) => el.value)) !== 'gb18030') {
+    throw new Error('换书后没有重新自动检测出 GB18030 编码');
+  }
   const gbkPreview = await page.$eval('#preview', (el) => el.textContent ?? '');
   if (gbkPreview.includes('\uFFFD')) throw new Error('GBK 文件仍被旧编码解码，出现替换符');
   if (!gbkPreview.includes('雾从海面漫上来')) throw new Error('GBK 正文解码错误');
@@ -808,7 +884,7 @@ try {
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#workspace:not([hidden])', { timeout: 15000 });
   await page.waitForFunction(
-    () => (document.querySelector('#warnings')?.textContent ?? '').includes('原始文件缺失或已失效'),
+    () => (document.querySelector('#warnings')?.textContent ?? '').includes('原文件缺失或已失效'),
     { timeout: 15000 },
   );
   if (!(await page.$eval('#reparse', (el) => el.disabled))) {
@@ -868,7 +944,7 @@ try {
   });
   await clearCurrentBook(page);
   await page.waitForFunction(
-    () => (document.querySelector('#draft-status')?.textContent ?? '').includes('草稿已清除'),
+    () => (document.querySelector('#draft-status')?.textContent ?? '').includes('已从书架删除'),
     { timeout: 10000 },
   );
   await sleep(2000);
@@ -889,6 +965,12 @@ try {
   const batchInput = await page.$('#file-input');
   await batchInput.uploadFile(path.resolve('public/sample.txt'), path.resolve('tests/fixtures/messy.txt'));
   await page.waitForSelector('#batch:not([hidden])', { timeout: 15000 });
+  // 批量完成后不再自动打包下载：等状态就绪，手动点「下载 ZIP」
+  await page.waitForFunction(
+    () => (document.querySelector('#batch-status')?.textContent ?? '').includes('完成'),
+    { timeout: 90000 },
+  );
+  await page.click('#batch-download');
   await page.waitForFunction(
     () => (document.querySelector('#batch-status')?.textContent ?? '').includes('已打包'),
     { timeout: 90000 },
@@ -920,6 +1002,7 @@ try {
   if (!(await page.$eval('#encoding', (el) => el.disabled))) throw new Error('导入 EPUB 后仍允许切换编码');
   if (!(await page.$eval('#reparse', (el) => el.disabled))) throw new Error('导入 EPUB 后仍允许重新识别');
 
+  await openRailDialog(page, 'export');
   await page.select('#export-format', 'txt');
   await page.click('#export');
   const txtFile = await waitForDownload(DOWNLOADS, ['.txt'], 30000);
@@ -928,12 +1011,13 @@ try {
   if (!txt.includes('雾是从凌晨四点开始漫上礁石的')) throw new Error('导出的 TXT 缺少正文');
   fs.rmSync(txtFile);
   await page.select('#export-format', 'epub');
+  await closeDialog(page, 'export');
 
   // 删掉这本 EPUB 的书架记录，再清空书架给后面的页面一个干净的落地页
   const beforeEpubClear = await readSessionIds(page);
   await clearCurrentBook(page);
   await page.waitForFunction(
-    () => (document.querySelector('#draft-status')?.textContent ?? '').includes('草稿已清除'),
+    () => (document.querySelector('#draft-status')?.textContent ?? '').includes('已从书架删除'),
     { timeout: 10000 },
   );
   const afterEpubClear = await readSessionIds(page);
@@ -1046,7 +1130,7 @@ try {
     }, 0);
   });
   await crashPage.waitForFunction(
-    () => (document.querySelector('#status')?.textContent ?? '').includes('后台线程出错'),
+    () => (document.querySelector('#status')?.textContent ?? '').includes('处理过程意外中断'),
     { timeout: 15000 },
   );
   const crashState = await crashPage.evaluate(() => ({
@@ -1058,6 +1142,7 @@ try {
   if (!crashState.reparseDisabled) throw new Error('Worker 崩溃后仍允许重新识别');
   if (crashState.exportDisabled) throw new Error('Worker 崩溃后导出按钮仍被禁用，可能卡在忙碌状态');
 
+  await openRailDialog(crashPage, 'export');
   await crashPage.click('#export');
   const crashFile = await waitForDownload(DOWNLOADS, ['.epub'], 30000);
   fs.rmSync(crashFile);
@@ -1126,7 +1211,8 @@ try {
   await migrationPage.evaluateOnNewDocument(() => {
     localStorage.setItem('txt2book.noticeSeen', 'welcome-2026-11');
   });
-  await migrationPage.goto(`${BASE}changelog.html`, { waitUntil: 'networkidle0' });
+  // 先在同源的静态页（不运行应用脚本）里预置 v1 数据库，再打开首页触发迁移
+  await migrationPage.goto(`${BASE}robots.txt`, { waitUntil: 'networkidle0' });
   await migrationPage.evaluate(
     () =>
       new Promise((resolve, reject) => {
@@ -1252,34 +1338,6 @@ try {
     throw new Error('刷新后首访提示条又出现了');
   }
   await noticeContext.close();
-
-  // 更新日志页：右上角入口 → 版本条目 → 回到首页
-  const changelogContext = await browser.createBrowserContext();
-  const changelogPage = await changelogContext.newPage();
-  await changelogPage.setViewport({ width: 1000, height: 900, deviceScaleFactor: 1 });
-  await changelogPage.evaluateOnNewDocument(() => {
-    localStorage.setItem('txt2book.noticeSeen', 'welcome-2026-11');
-  });
-  await changelogPage.goto(BASE, { waitUntil: 'networkidle0' });
-  await changelogPage.click('#changelog-link');
-  await changelogPage.waitForFunction(() => location.pathname.endsWith('/changelog.html'), {
-    timeout: 10000,
-  });
-  const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
-  const entryVersion = await changelogPage.$eval('.changelog-version', (el) => el.textContent ?? '');
-  if (entryVersion !== `v${pkg.version}`) throw new Error(`更新日志最新版本不对：${entryVersion}`);
-  const currentVersion = await changelogPage.$eval('.changelog-lead strong', (el) => el.textContent ?? '');
-  if (currentVersion !== `v${pkg.version}`) throw new Error(`当前版本号不对：${currentVersion}`);
-  const changelogText = await changelogPage.$eval('.changelog-list', (el) => el.textContent ?? '');
-  if (!changelogText.includes('章号单独一行')) throw new Error('更新日志缺少 v0.0.2 条目');
-  if (!changelogText.includes('TXT ⇄ EPUB')) throw new Error('更新日志缺少 v0.0.1 条目');
-  await changelogPage.screenshot({ path: path.join(OUT, 'shot-changelog.png'), fullPage: true });
-  await changelogPage.click('.changelog-cta .primary');
-  await changelogPage.waitForFunction(() => location.pathname === '/' || location.pathname.endsWith('/'), {
-    timeout: 10000,
-  });
-  if (!(await changelogPage.$('#drop-zone'))) throw new Error('从更新日志返回首页失败');
-  await changelogContext.close();
 
   console.log(`SMOKE OK · ${path.basename(file)} · ${bytes.length} bytes · ${stats}`);
 } finally {

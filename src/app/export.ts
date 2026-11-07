@@ -83,57 +83,87 @@ export interface ExportedInfo {
 
 export interface ExportDeps {
   state: State;
-  call: (payload: RequestPayload, transfer?: Transferable[]) => Promise<FromWorker>;
+  call: (payload: RequestPayload, transfer?: Transferable[], timeoutMs?: number) => Promise<FromWorker>;
   setStatus: (message: string, kind?: 'normal' | 'error') => void;
   toast: (message: string, action?: { label: string; onClick: () => void }) => void;
   updateControls: () => void;
+  /** 失败提示里的「重试」动作；由调用方传入重新导出的入口 */
+  retry?: () => void;
   onExported?: (info: ExportedInfo) => void;
 }
 
-/** 按当前格式导出 EPUB / TXT / Markdown；EPUB 打包在 Worker 里完成 */
+/** 把 Worker 返回的 formatted 结果下载落盘 */
+function deliverFormatted(
+  deps: ExportDeps,
+  data: Uint8Array,
+  ext: string,
+  mime: string,
+): void {
+  const { state, setStatus } = deps;
+  const blob = new Blob([toArrayBuffer(data)], { type: mime });
+  const filename = `${sanitizeFilename(state.meta.title)}.${ext}`;
+  download(blob, filename);
+  setStatus(`已导出 · ${formatBytes(blob.size)}`);
+  deps.onExported?.({ blob, filename, format: state.exportFormat });
+}
+
+/** 按当前格式导出 EPUB / DOCX / HTML / TXT / Markdown；构建都在 Worker 里完成 */
 export async function exportBook(deps: ExportDeps): Promise<void> {
   const { state, call, setStatus, toast, updateControls } = deps;
   if (!state.chapters.length || state.busy) return;
 
-  if (state.exportFormat !== 'epub') {
-    const formatted = buildFormattedBook(state.exportFormat, state.chapters, state.meta, state.layout);
-    if (!formatted) {
-      toast('没有可以导出的正文');
-      return;
-    }
-    const blob = new Blob([toArrayBuffer(formatted.data)], { type: formatted.mime });
-    const filename = `${sanitizeFilename(state.meta.title)}.${formatted.ext}`;
-    download(blob, filename);
-    setStatus(`已导出 · ${formatBytes(blob.size)}`);
-    deps.onExported?.({ blob, filename, format: state.exportFormat });
-    toast(`已生成 ${formatted.ext.toUpperCase()}，共 ${state.chapters.length} 章`);
-    return;
-  }
-
   state.busy = true;
   updateControls();
-  setStatus('正在生成 EPUB…');
+  const format = state.exportFormat;
+  setStatus(
+    format === 'epub'
+      ? '正在生成 EPUB…'
+      : `正在生成 ${format.toUpperCase()}…`,
+  );
 
   try {
-    const res = await call({
-      type: 'pack',
-      chapters: state.chapters,
-      meta: state.meta,
-      layout: state.layout,
-      cover: state.cover,
-      font: state.font,
-      version: state.epubVersion,
-    });
-    if (res.type !== 'packed') return;
+    if (format === 'epub') {
+      const res = await call(
+        {
+          type: 'pack',
+          chapters: state.chapters,
+          meta: state.meta,
+          layout: state.layout,
+          cover: state.cover,
+          font: state.font,
+          version: state.epubVersion,
+        },
+        [],
+        60_000,
+      );
+      if (res.type !== 'packed') return;
+      const blob = new Blob([toArrayBuffer(res.data)], { type: 'application/epub+zip' });
+      const filename = `${sanitizeFilename(state.meta.title)}.epub`;
+      download(blob, filename);
+      setStatus(`已导出 · ${formatBytes(blob.size)}`);
+      deps.onExported?.({ blob, filename, format: 'epub' });
+      toast('EPUB 已生成，拖到阅读器里看看效果吧');
+      return;
+    }
 
-    const blob = new Blob([toArrayBuffer(res.data)], { type: 'application/epub+zip' });
-    const filename = `${sanitizeFilename(state.meta.title)}.epub`;
-    download(blob, filename);
-    setStatus(`已导出 · ${formatBytes(blob.size)}`);
-    deps.onExported?.({ blob, filename, format: 'epub' });
-    toast('EPUB 已生成，拖到阅读器里看看效果吧');
+    const res = await call(
+      {
+        type: 'format',
+        format,
+        chapters: state.chapters,
+        meta: state.meta,
+        layout: state.layout,
+      },
+      [],
+      60_000,
+    );
+    if (res.type !== 'formatted') return;
+    deliverFormatted(deps, res.data, res.ext, res.mime);
+    toast(`已生成 ${res.ext.toUpperCase()}，共 ${state.chapters.length} 章`);
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : '导出失败', 'error');
+    const message = error instanceof Error ? error.message : '导出失败';
+    setStatus(message, 'error');
+    toast(`导出失败：${message}`, deps.retry ? { label: '重试', onClick: deps.retry } : undefined);
   } finally {
     state.busy = false;
     updateControls();

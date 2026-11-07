@@ -5,6 +5,7 @@ import { detectFormat, importDocxFile, importEpubFile } from '../core/import';
 import { convertParseResult, loadConverter } from '../core/convert';
 import { compileRules } from '../core/rules';
 import { decodeBuffer, normalizeText } from '../core/text';
+import { buildFormattedBook } from '../app/export';
 import type { ParseOptions, ParseResult } from '../types';
 import type { FromWorker, ToWorker } from './protocol';
 
@@ -58,7 +59,7 @@ async function runParse(id: number, options: ParseOptions): Promise<void> {
   const { chapters, warnings } = chaptersFromText(text, { filterAds: options.filterAds, rules });
 
   if (decoded.confidence < 0.7) {
-    warnings.unshift('编码识别把握不大，如果正文有乱码，请在右侧手动切换编码后重新识别。');
+    warnings.unshift('编码识别把握不大，如果正文有乱码，请在右侧「导入与文本」里切换编码后重新识别。');
   }
 
   const result: ParseResult = {
@@ -116,6 +117,22 @@ ctx.onmessage = (event) => {
         version: message.version,
       });
       post({ id: message.id, type: 'packed', data }, [data.buffer as ArrayBuffer]);
+      return;
+    }
+
+    if (message.type === 'format') {
+      post({ id: message.id, type: 'progress', phase: `正在生成 ${message.format.toUpperCase()}…` });
+      const formatted = buildFormattedBook(
+        message.format,
+        message.chapters,
+        message.meta,
+        message.layout,
+      );
+      if (!formatted) throw new Error('没有可以导出的正文');
+      post(
+        { id: message.id, type: 'formatted', data: formatted.data, ext: formatted.ext, mime: formatted.mime },
+        [formatted.data.buffer as ArrayBuffer],
+      );
       return;
     }
 

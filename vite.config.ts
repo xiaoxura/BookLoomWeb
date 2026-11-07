@@ -50,7 +50,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'index.html',
-        changelog: 'changelog.html',
       },
     },
   },

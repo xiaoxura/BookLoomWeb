@@ -1,14 +1,14 @@
-# txt2book
+# BookLoom
 
 把 TXT / DOCX 小说转换成排版体面的 EPUB，也能导出 DOCX / 单文件 HTML / TXT / Markdown —— 纯浏览器本地运行，文件不出设备。
 
-当前版本 **v0.3.0**（2026-11-06），完整变更见 [changelog.html](changelog.html)。
+当前版本 **v0.3.1**（2026-11-07），代码变更见 [docs/roadmap.md](docs/roadmap.md) 的实施进度与 GitHub 提交记录。
 
 在线版可直接托管到 EdgeOne Markers（或任意静态托管）；转换全部在 Web Worker 里完成，没有后端、没有上传。
 
 ## 为什么再做一个
 
-网上现成的 TXT 转换器大多有三个问题：编码识别不准（GBK 当 UTF-8）、章节全靠一条正则、转出来的文件没有目录和封面。txt2book 把重点放在**解析与校对**上：
+网上现成的 TXT 转换器大多有三个问题：编码识别不准（GBK 当 UTF-8）、章节全靠一条正则、转出来的文件没有目录和封面。BookLoom 把重点放在**解析与校对**上：
 
 - 自动识别 UTF-8 / GBK / GB18030 / Big5 / UTF-16，可手动切换
 - 章节按「标题形态 + 密度」打分识别，支持卷/章两级、目录页剔除、空行分章兜底
@@ -16,7 +16,7 @@
 - 点正文任意一段就能「从此分章」或「设为标题」，识别漏了的章节不用改代码
 - 章节可一键升为卷 / 降为章，支持搜索章节、输入章号跳转
 - 排版可以调行高、段距、缩进、字体、对齐，也能让章号单独一行、追加自己的 CSS
-- 应用式布局：页面本身不滚动，章节 / 预览 / 设置各自滚动，页头和页脚常驻
+- 应用式布局：页面本身不滚动，章节 / 预览 / 设置各自滚动，页头常驻
 - 可以嵌入 ttf / otf / woff 字体；封面可选竖排书名或 Orly 风格的色块（本地生成，配色由书名决定）
 - 封面编辑器：在两种模板上切换配色（原木 / 墨夜 / 深海 / 酒红 / 松林）、标题字号和作者位置，右侧实时预览；参数随草稿保存，导出 JPEG 与预览一致
 - 文件名支持知轩藏书格式：`《书名》（校对版全本）作者：远瞳.txt` 会自动拆出书名和作者
@@ -106,13 +106,13 @@ npm run smoke            # 真实 Chrome 端到端（含批量、草稿、EPUB 2
 
 站点固定使用 `https://txt2book.xiaoxura.com/` 作为 canonical 域名。迁移域名时要同步修改：
 
-- `index.html` / `changelog.html`：`canonical`、`og:url`、`og:image` 与 JSON-LD 里的绝对地址
+- `index.html`：`canonical`、`og:url`、`og:image` 与 JSON-LD 里的绝对地址
 - `public/robots.txt`、`public/sitemap.xml`、`public/llms.txt`
 
 站内约定：
 
 - 首页唯一 `h1` 是「TXT 转 EPUB」，下面保留「三步把 TXT 转成 EPUB」与「常见问题」两段静态正文；FAQ 的可见问答与 JSON-LD `FAQPage` 逐条对应
-- 结构化数据：`WebSite`、`Organization`、`Person`、`WebApplication` / `SoftwareApplication`、`HowTo`、`FAQPage`；更新日志另加 `Article` 与 `BreadcrumbList`
+- 结构化数据：`WebSite`、`Organization`、`Person`、`WebApplication` / `SoftwareApplication`、`HowTo`、`FAQPage`
 - `robots.txt` 显式放行主流 AI 检索与训练爬虫，并声明 `Content-Signal`；`sitemap.xml` 只列可索引页面；`llms.txt` 给生成式引擎一份可引用的站点摘要
 - 分享图 `og.png` 为 1200×630；`npm run build` 会把版本号与构建时间注入 JSON-LD
 - `tests/seo.test.ts` 校验 canonical、JSON-LD 可解析、FAQ 与页面一致，以及 sitemap / robots / llms.txt 的地址
@@ -145,8 +145,7 @@ src/
 │   └── protocol.ts
 ├── types.ts
 ├── main.ts            # 启动、草稿、Worker 调用与业务动作
-├── changelog.ts       # 更新日志页的主题切换
-├── notice.ts          # 站内公告：文案与弹窗（TXT / 更新日志页共用）
+├── notice.ts          # 站内公告：文案与弹窗（落地页与工作区共用）
 └── styles.css
 tests/                 # vitest：编码、分章、规则、草稿、EPUB、语料压测、SEO
 scripts/
@@ -206,7 +205,11 @@ docs/
 - **MOBI / AZW3 暂不支持**（EPUB 2 兼容模式只能解决老阅读器对 EPUB 3 的挑剔，不能替代 AZW3）。MOBI 需要自己实现 PDB + PalmDOC 容器（还要处理 NCX 索引记录），AZW3 的 KF8 结构更复杂。考虑到亚马逊自 2022 年底起「发送至 Kindle」已不再接受 MOBI、USB 侧载主流是 AZW3，建议先用 EPUB 推送或经 Calibre 转换。
 - 暂不支持 PDF（中文字体子集化是硬骨头）。
 - 「疑似漏章」和「全书体检」都是启发式扫描：体检可能把番外、特殊编号或本身不连续的原书报成问题；重编号只改「第 X 章 / 回 / 节 / 话」里的数字，并且必须手动点击，执行前会进历史，可撤销。
-- 批量替换的正则运行在主线程，已限制查找 200 字 / 替换 500 字，并拦截常见的嵌套量词和「交替分支 + 无限量词」写法；复杂正则仍可能较慢，预览超时会直接取消。
+- 批量替换的正则运行在 Worker 里，已限制查找 200 字 / 替换 500 字，并拦截常见的嵌套量词和「交替分支 + 无限量词」写法；复杂正则超时会自动中断，输入时即时校验非法正则。
+- 解析与重新识别挂起 120 秒、打包 60 秒会自动中断并重建后台线程，解析 / 导出 / 批量进行中都可以点「取消」中断，批量里失败的项可单独重试。
+- 批量转换完成后不自动下载：点「下载 ZIP」手动触发，成品列表里可以逐本单独下载。
+- 删除书架书先软删除并给出 8 秒撤销窗口，之后才真正清理草稿和原始文件；重新识别 / 换编码 / 切换识别规则会覆盖手动校对，有编辑记录时需要先确认。
+- 目录超过 400 章时只渲染可见部分，其余章节用搜索或输入章号定位（数据始终是完整存档的）。
 - 撤销历史上限 50 步，并按字符总量做了内存预算；超长书籍会优先丢弃更早的历史，刷新页面后不再保留历史（草稿仍会保存最后状态）。
 - 分章只能从段落边界切，不支持在段落内部按字符拆。
 - 单文件建议在 20MB 以内；压测 2.4MB / 129 万字 / 1200 章约 0.3 秒完成解析与打包。

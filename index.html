@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>txt2book — TXT 转 EPUB 与电子书排版工具（纯本地）</title>
+    <title>BookLoom — TXT 转 EPUB 与电子书排版工具（纯本地）</title>
     <meta
       name="description"
       content="免费在线的电子书转换工具：把 TXT 小说转成 EPUB，也支持 EPUB / DOCX 互转。自动识别 UTF-8 / GBK 编码与章节、人工校对、生成封面，导出 EPUB 3 / 2、DOCX、HTML、TXT、Markdown；文件全程在浏览器本地处理，不上传、无需注册。"
@@ -13,7 +13,7 @@
       content="TXT转EPUB,EPUB转TXT,TXT转电子书,小说转EPUB,EPUB排版,电子书制作,GBK乱码,DOCX转EPUB,知轩藏书,EPUB 3"
     />
     <meta name="author" content="xiaoxura" />
-    <meta name="application-name" content="txt2book" />
+    <meta name="application-name" content="BookLoom" />
     <meta
       name="robots"
       content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
@@ -22,7 +22,7 @@
     <link rel="canonical" href="https://txt2book.xiaoxura.com/" />
     <link rel="alternate" hreflang="zh-CN" href="https://txt2book.xiaoxura.com/" />
     <link rel="alternate" hreflang="x-default" href="https://txt2book.xiaoxura.com/" />
-    <link rel="alternate" type="text/plain" href="/llms.txt" title="txt2book 的 LLM 摘要" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="BookLoom 的 LLM 摘要" />
     <script>
       try {
         const saved = localStorage.getItem('txt2book.theme');
@@ -37,10 +37,10 @@
       }
     </script>
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="txt2book" />
+    <meta property="og:site_name" content="BookLoom" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:url" content="https://txt2book.xiaoxura.com/" />
-    <meta property="og:title" content="txt2book — TXT 转 EPUB 与电子书排版工具" />
+    <meta property="og:title" content="BookLoom — TXT 转 EPUB 与电子书排版工具" />
     <meta
       property="og:description"
       content="纯本地电子书转换：TXT 转 EPUB、EPUB / DOCX 互转，自动分章、人工校对、封面与 EPUB 3 / 2 导出。文件不上传、无需注册。"
@@ -51,10 +51,10 @@
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="txt2book：把 TXT 转成排版体面的 EPUB，纯浏览器本地完成"
+      content="BookLoom：把 TXT 转成排版体面的 EPUB，纯浏览器本地完成"
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="txt2book — TXT 转 EPUB 与电子书排版工具" />
+    <meta name="twitter:title" content="BookLoom — TXT 转 EPUB 与电子书排版工具" />
     <meta
       name="twitter:description"
       content="纯本地 TXT / EPUB / DOCX 导入与互转，自动分章、可校对、支持 EPUB 3 / 2 与 TXT / Markdown 导出。"
@@ -62,7 +62,7 @@
     <meta name="twitter:image" content="https://txt2book.xiaoxura.com/og.png" />
     <meta
       name="twitter:image:alt"
-      content="txt2book：把 TXT 转成排版体面的 EPUB，纯浏览器本地完成"
+      content="BookLoom：把 TXT 转成排版体面的 EPUB，纯浏览器本地完成"
     />
     <script type="application/ld+json">
       {
@@ -72,8 +72,8 @@
             "@type": "WebSite",
             "@id": "https://txt2book.xiaoxura.com/#website",
             "url": "https://txt2book.xiaoxura.com/",
-            "name": "txt2book",
-            "alternateName": "txt2book 电子书转换",
+            "name": "BookLoom",
+            "alternateName": "BookLoom 电子书转换",
             "description": "免费、纯浏览器本地运行的 TXT / EPUB / DOCX 电子书转换与排版工具。",
             "inLanguage": "zh-CN",
             "publisher": { "@id": "https://txt2book.xiaoxura.com/#organization" }
@@ -81,13 +81,13 @@
           {
             "@type": "Organization",
             "@id": "https://txt2book.xiaoxura.com/#organization",
-            "name": "txt2book",
+            "name": "BookLoom",
             "url": "https://txt2book.xiaoxura.com/",
             "logo": {
               "@type": "ImageObject",
               "url": "https://txt2book.xiaoxura.com/icon.svg"
             },
-            "sameAs": ["https://github.com/xiaoxura/txt2book"]
+            "sameAs": ["https://github.com/xiaoxura/BookLoomWeb"]
           },
           {
             "@type": "Person",
@@ -99,7 +99,7 @@
           {
             "@type": ["WebApplication", "SoftwareApplication"],
             "@id": "https://txt2book.xiaoxura.com/#app",
-            "name": "txt2book",
+            "name": "BookLoom",
             "url": "https://txt2book.xiaoxura.com/",
             "description": "纯浏览器本地运行的电子书转换工具：TXT 转 EPUB、EPUB / DOCX 互转，自动识别编码与章节、人工校对、封面生成与多格式导出。",
             "applicationCategory": "UtilitiesApplication",
@@ -110,9 +110,8 @@
             "softwareVersion": "%APP_VERSION%",
             "datePublished": "2026-11-04",
             "dateModified": "%BUILD_ISO%",
-            "releaseNotes": "https://txt2book.xiaoxura.com/changelog.html",
             "isAccessibleForFree": true,
-            "license": "https://github.com/xiaoxura/txt2book/blob/main/LICENSE",
+            "license": "https://github.com/xiaoxura/BookLoomWeb/blob/main/LICENSE",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" },
             "featureList": [
               "TXT / EPUB / DOCX 导入",
@@ -134,7 +133,7 @@
             "@type": "HowTo",
             "@id": "https://txt2book.xiaoxura.com/#howto",
             "name": "如何把 TXT 转成 EPUB",
-            "description": "用 txt2book 在浏览器里把 TXT 小说转成带目录和封面的 EPUB，文件不上传。",
+            "description": "用 BookLoom 在浏览器里把 TXT 小说转成带目录和封面的 EPUB，文件不上传。",
             "totalTime": "PT3M",
             "tool": [{ "@type": "HowToTool", "name": "支持 ES2020 的现代浏览器" }],
             "step": [
@@ -236,6 +235,7 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
     <header class="topbar">
       <div class="brand">
         <span class="logo" aria-hidden="true">
@@ -245,9 +245,34 @@
           </svg>
         </span>
         <div class="brand-text">
-          <strong>txt2book</strong>
-          <span>TXT ⇄ EPUB</span>
+          <strong>BookLoom</strong>
         </div>
+      </div>
+      <div class="top-primary">
+        <button
+          id="shelf-btn"
+          class="icon-button"
+          type="button"
+          aria-label="书架"
+          title="书架"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 5.2h4.4v14H4zM9.4 5.2H14v14H9.4z" />
+            <path d="M15.1 6.4l4.3-1.2 3.5 13.5-4.3 1.2z" />
+          </svg>
+        </button>
+        <button
+          id="settings-btn"
+          class="icon-button"
+          type="button"
+          aria-label="书籍设置与导出"
+          title="书籍设置与导出"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08A1.7 1.7 0 0 0 10 4.09V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08A1.7 1.7 0 0 0 19.91 11H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z" />
+          </svg>
+        </button>
       </div>
       <div class="top-actions">
         <button
@@ -263,31 +288,6 @@
             <path d="M12 17.1h.01" />
           </svg>
         </button>
-        <button
-          id="shelf-btn"
-          class="icon-button"
-          type="button"
-          aria-label="书架"
-          title="书架"
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M4 5.2h4.4v14H4zM9.4 5.2H14v14H9.4z" />
-            <path d="M15.1 6.4l4.3-1.2 3.5 13.5-4.3 1.2z" />
-          </svg>
-        </button>
-        <a
-          id="changelog-link"
-          class="icon-button hide-sm"
-          href="/changelog.html"
-          aria-label="更新日志"
-          title="更新日志"
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M7 3.5h6.8L17.5 7v13.5H7z" />
-            <path d="M13.6 3.7v3.6h3.6" />
-            <path d="M9.7 11h4.8M9.7 14.2h4.8M9.7 17.3h3.1" />
-          </svg>
-        </a>
         <button
           id="notice-btn"
           class="icon-button notice-button"
@@ -317,10 +317,23 @@
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
           </svg>
         </button>
+        <button
+          id="install-app"
+          class="icon-button"
+          type="button"
+          aria-label="安装为桌面应用"
+          title="安装到桌面"
+          hidden
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3.5v11.2M7.6 10.6l4.4 4.4 4.4-4.4" />
+            <path d="M4.5 19.5h15" />
+          </svg>
+        </button>
         <a
           id="github-link"
           class="icon-button hide-sm"
-          href="https://github.com/xiaoxura/txt2book"
+          href="https://github.com/xiaoxura/BookLoomWeb"
           target="_blank"
           rel="noopener noreferrer"
           aria-label="在 GitHub 查看源码（MIT 开源）"
@@ -333,12 +346,28 @@
             />
           </svg>
         </a>
+        <button
+          id="more-btn"
+          class="icon-button top-more-btn"
+          type="button"
+          aria-label="更多"
+          title="更多"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-controls="top-more-menu"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+            <circle cx="5" cy="12" r="0.5" />
+            <circle cx="12" cy="12" r="0.5" />
+            <circle cx="19" cy="12" r="0.5" />
+          </svg>
+        </button>
       </div>
       <div id="app-progress" class="app-progress" hidden aria-hidden="true"></div>
     </header>
 
-    <main>
-      <div id="notice-banner" class="notice-banner" hidden>
+    <main id="main-content" tabindex="-1">
+      <div id="notice-banner" class="notice-banner" role="note" aria-live="polite" hidden>
         <p>
           <b>本地处理，不上传</b><span aria-hidden="true"> · </span>请只转换你有权处理的内容，草稿只保存在这台设备上。
         </p>
@@ -383,6 +412,10 @@
             <p id="drop-loading-phase" class="drop-sub">正在读取文件，请稍候</p>
             <p class="fine">大文件需要几秒，文件始终留在这台设备上</p>
           </div>
+        </div>
+        <div id="import-error" hidden role="alert">
+          <p id="import-error-text"></p>
+          <button id="import-error-retry" type="button" class="primary">换个文件重试</button>
         </div>
       </section>
 
@@ -484,16 +517,16 @@
       </section>
 
       <section id="privacy" class="privacy">
-        <h2>关于 txt2book</h2>
+        <h2>关于 BookLoom</h2>
         <p>
-          txt2book 是一个本地优先的电子书转换与排版工具，主要用来把中文 TXT 小说整理成带目录、封面和排版的 EPUB，也支持 EPUB / DOCX 互转与多格式导出。
+          BookLoom 是一个本地优先的电子书转换与排版工具，主要用来把中文 TXT 小说整理成带目录、封面和排版的 EPUB，也支持 EPUB / DOCX 互转与多格式导出。
         </p>
         <p>
           所有转换都在你的浏览器里完成：文件不上传、断网也能用，没有统计脚本和第三方请求。
           草稿只存在本机 IndexedDB，清除浏览器数据即消失。
         </p>
         <p>
-          由 <a href="https://github.com/xiaoxura/txt2book">xiaoxura</a> 维护，源码以 MIT
+          由 <a href="https://github.com/xiaoxura/BookLoomWeb">xiaoxura</a> 维护，源码以 MIT
           协议开源，可以自行部署一份。这里不提供、也不存储任何书籍，不会破解 DRM；请只转换你有权处理的内容，喜欢一本书请支持正版。
         </p>
       </section>
@@ -536,10 +569,10 @@
       </section>
 
       <section id="workspace" class="workspace" hidden data-mobile-view="chapters">
+        <div class="vh" role="heading" aria-level="1">BookLoom 工作区</div>
         <nav id="mobile-tabs" class="mobile-tabs" aria-label="工作区视图">
           <button type="button" data-view="chapters" aria-pressed="true">目录</button>
           <button type="button" data-view="preview" aria-pressed="false">预览</button>
-          <button type="button" data-view="settings" aria-pressed="false">设置与导出</button>
         </nav>
 
         <aside id="chapters-panel" class="panel chapters-panel">
@@ -552,71 +585,158 @@
             <div class="panel-head-actions">
               <button id="undo-btn" class="ghost small" type="button" title="撤销（Ctrl+Z）" disabled>↶</button>
               <button id="redo-btn" class="ghost small" type="button" title="重做（Shift+Ctrl+Z）" disabled>↷</button>
-              <button id="change-file" class="ghost small" type="button">换一本</button>
             </div>
           </div>
-          <input
-            id="chapter-search"
-            class="chapter-search"
-            type="search"
-            placeholder="搜索章节 / 输入章号跳转"
-            aria-label="搜索章节或输入章号跳转"
-            autocomplete="off"
-            hidden
-          />
+          <div id="chapter-tools" class="chapter-tools">
+            <input
+              id="chapter-search"
+              class="chapter-search"
+              type="search"
+              placeholder="搜索 / 章号"
+              aria-label="搜索章节或输入章号跳转"
+              autocomplete="off"
+              hidden
+            />
+            <button id="multi-toggle" class="ghost small" type="button" title="批量移动章节到其他卷">多选</button>
+          </div>
           <p id="search-count" class="search-count" aria-live="polite" hidden></p>
-          <div id="warnings" class="warnings" hidden></div>
-          <div id="diagnostics" class="diag" hidden>
-            <div class="diag-head">
-              <button id="diag-toggle" class="diag-toggle" type="button">
-                <span id="diag-summary">疑似漏章</span>
-                <span id="diag-caret" class="diag-caret">收起</span>
-              </button>
-              <button id="diag-dismiss" class="diag-dismiss" type="button" title="忽略这些提示">×</button>
-            </div>
-            <div id="diag-list" class="diag-list"></div>
-            <div class="diag-actions">
-              <button
-                id="audit-renumber"
-                class="ghost small"
-                type="button"
-                title="按顺序重编号：只改章号数字，保留中文 / 阿拉伯数字风格"
-              >按顺序重编号</button>
+          <div id="multi-bar" class="multi-bar" hidden>
+            <span class="multi-hint">已选 <b id="multi-count">0</b> 章</span>
+            <div class="multi-actions">
+              <button id="multi-all" class="ghost small" type="button">全选本页</button>
+              <button id="multi-move" class="primary small" type="button" disabled>移动到卷…</button>
+              <button id="multi-exit" class="ghost small" type="button">取消</button>
             </div>
           </div>
+          <div id="warnings" class="warnings" hidden></div>
           <div id="chapter-list" class="chapter-list" role="list"></div>
+          <div id="list-pager" class="list-pager" hidden>
+            <button id="pager-prev" class="ghost small pager-icon" type="button" aria-label="上一页" title="上一页" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14.5 5.5 8 12l6.5 6.5" />
+              </svg>
+            </button>
+            <span id="pager-info" class="muted"></span>
+            <select id="pager-size" class="pager-size" aria-label="每页章数">
+              <option value="100">每页 100 章</option>
+              <option value="200">每页 200 章</option>
+              <option value="400">每页 400 章</option>
+              <option value="800">每页 800 章</option>
+            </select>
+            <button id="pager-next" class="ghost small pager-icon" type="button" aria-label="下一页" title="下一页" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9.5 5.5 16 12l-6.5 6.5" />
+              </svg>
+            </button>
+          </div>
         </aside>
 
         <section id="preview-panel" class="panel preview-panel">
           <div class="panel-head">
-            <h2>预览</h2>
-            <span id="preview-meta" class="muted"></span>
+            <h2 id="preview-title">预览</h2>
           </div>
           <div id="selection-bar" class="selection-bar" hidden>
             <span class="selection-hint">已选第 <b id="selection-index">1</b> 段</span>
             <div class="selection-actions">
               <button type="button" data-act="split" class="small">从此分章</button>
               <button type="button" data-act="title" class="small">设为标题</button>
+              <button type="button" data-act="volume" class="small">设为卷名</button>
               <button type="button" data-act="cancel" class="small ghost">取消</button>
             </div>
           </div>
           <div id="preview-scroll" class="preview-scroll">
             <div id="preview" class="preview"></div>
           </div>
-          <div class="preview-nav">
-            <button id="prev-chapter" class="ghost small" type="button" disabled>← 上一章</button>
-            <span id="chapter-position" class="muted">—</span>
-            <button id="next-chapter" class="ghost small" type="button" disabled>下一章 →</button>
-          </div>
         </section>
 
-        <aside id="settings-panel" class="panel settings-panel">
-          <div class="panel-head">
+        <aside id="settings-rail" class="panel settings-rail">
+          <div class="rail-head">
             <h2>设置</h2>
           </div>
+          <nav class="rail-nav" aria-label="设置入口">
+            <button class="rail-item" type="button" data-pane="info">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 6.6C10.4 5.3 8.2 4.7 5.5 4.7c-.8 0-1.5.07-2 .2v13.9c.5-.13 1.2-.2 2-.2 2.7 0 4.9.6 6.5 1.9 1.6-1.3 3.8-1.9 6.5-1.9.8 0 1.5.07 2 .2V4.9c-.5-.13-1.2-.2-2-.2-2.7 0-4.9.6-6.5 1.9Z" />
+                <path d="M12 6.6v14" />
+              </svg>
+              <span>书籍信息</span>
+            </button>
+            <button class="rail-item" type="button" data-pane="layout">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 6h16M4 10h10M4 14h16M4 18h10" />
+              </svg>
+              <span>排版</span>
+            </button>
+            <button class="rail-item" type="button" data-pane="rules">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 7h13l-3.2-3.2M20 17H7l3.2 3.2" />
+              </svg>
+              <span>识别与替换</span>
+            </button>
+            <button
+              id="diag-btn"
+              class="rail-item"
+              type="button"
+              data-pane="diag"
+              title="全书体检：检查疑似漏章与结构问题"
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="M20 20l-4.2-4.2" />
+              </svg>
+              <span>全书体检</span><span id="diag-badge" class="diag-badge" data-state="ok">✓</span>
+            </button>
+          </nav>
+          <div class="rail-foot">
+            <button id="rail-export" class="primary wide" type="button" title="点击选择导出格式">导出</button>
+            <p id="rail-status" class="hint"></p>
+          </div>
+        </aside>
 
-          <div class="settings-scroll">
-            <div class="group">
+
+      </section>
+    </main>
+
+    <div id="cover-view" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="封面大图">
+      <button id="cover-view-close" class="lightbox-close" type="button" aria-label="关闭封面预览">×</button>
+      <img id="cover-view-img" alt="封面大图" />
+      <p class="lightbox-hint">点击空白处或按 Esc 关闭</p>
+    </div>
+
+    <div id="shortcuts" class="lightbox shortcuts" hidden role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+      <div class="shortcuts-card">
+        <div class="shortcuts-head">
+          <div>
+            <p class="notice-kicker">键盘</p>
+            <h2 id="shortcuts-title">快捷键</h2>
+          </div>
+          <button id="shortcuts-close" class="lightbox-close" type="button" aria-label="关闭快捷键帮助">×</button>
+        </div>
+        <div class="shortcuts-list">
+          <div class="shortcut-row"><span><kbd>↑</kbd> <kbd>↓</kbd> 或 <kbd>J</kbd> <kbd>K</kbd></span><span>切换上一章 / 下一章</span></div>
+          <div class="shortcut-row"><span><kbd>/</kbd></span><span>聚焦章节搜索</span></div>
+          <div class="shortcut-row"><span><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd></span><span>按当前格式导出</span></div>
+          <div class="shortcut-row"><span><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd></span><span>撤销</span></div>
+          <div class="shortcut-row"><span><kbd>Shift</kbd> + <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd></span><span>重做</span></div>
+          <div class="shortcut-row"><span><kbd>Esc</kbd></span><span>关闭浮层 / 取消段落选择</span></div>
+          <div class="shortcut-row"><span><kbd>?</kbd></span><span>打开这个帮助</span></div>
+        </div>
+        <p class="hint">在输入框里，单键快捷键会让给输入法；Ctrl / ⌘ + S 仍然可用。</p>
+      </div>
+    </div>
+
+
+    <div id="dialog-info" class="app-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="dialog-info-title">
+      <div class="app-dialog-card">
+        <div class="app-dialog-head">
+          <div>
+            <p class="notice-kicker">本机</p>
+            <h2 id="dialog-info-title">书籍信息</h2>
+          </div>
+          <button id="dialog-info-close" class="app-dialog-close" type="button" aria-label="关闭书籍信息">×</button>
+        </div>
+        <div class="app-dialog-body">
+<div class="group">
               <h3>书籍信息</h3>
               <label class="field">
                 <span>书名</span>
@@ -626,11 +746,17 @@
                 <span>作者</span>
                 <input id="meta-author" type="text" placeholder="佚名" />
               </label>
-              <details class="meta-more">
-                <summary>更多信息（简介 / 系列 / 出版）</summary>
-                <label class="field column">
+            </div>
+
+            <div class="group">
+              <h3>出版信息</h3>
+                              <label class="field column">
                   <span>简介</span>
                   <textarea id="meta-description" rows="3" placeholder="会写进 EPUB 的 dc:description"></textarea>
+                </label>
+                <label class="field">
+                  <span>状态</span>
+                  <input id="meta-status" type="text" placeholder="连载中 / 已完结" />
                 </label>
                 <label class="field">
                   <span>系列</span>
@@ -648,7 +774,6 @@
                   <span>出版日期</span>
                   <input id="meta-published" type="date" />
                 </label>
-              </details>
               <div class="cover-row">
                 <button
                   id="cover-thumb"
@@ -666,9 +791,11 @@
                   <input id="cover-input" type="file" accept="image/*" hidden />
                 </div>
               </div>
-              <details class="cover-editor">
-                <summary>封面编辑（配色 / 字号 / 作者位置）</summary>
-                <div class="cover-editor-body">
+            </div>
+
+            <div class="group">
+              <h3>封面编辑</h3>
+                                <div class="cover-editor-body">
                   <canvas id="cover-preview" width="180" height="270" aria-label="封面实时预览"></canvas>
                   <div class="cover-fields">
                     <label class="field">
@@ -708,125 +835,26 @@
               </details>
             </div>
 
-            <button
-              id="settings-more"
-              class="settings-more"
-              type="button"
-              aria-expanded="false"
-              aria-controls="settings-advanced"
-            >
-              <span class="settings-more-text">
-                <b>排版与高级设置</b>
-                <span class="hint">行距 / 编码 / 识别规则 / 批量替换</span>
-              </span>
-              <span class="settings-more-caret" aria-hidden="true">▸</span>
-            </button>
-
-            <div id="settings-advanced" class="settings-advanced" hidden>
             <div class="group">
-              <h3>文本处理</h3>
-              <label class="field">
-                <span>编码</span>
-                <select id="encoding">
-                  <option value="auto">自动检测</option>
-                  <option value="utf-8">UTF-8</option>
-                  <option value="gb18030">GB18030 / GBK</option>
-                  <option value="big5">Big5</option>
-                  <option value="utf-16le">UTF-16 LE</option>
-                  <option value="utf-16be">UTF-16 BE</option>
-                </select>
-              </label>
-              <p id="encoding-note" class="hint" hidden>EPUB 里的文字自带编码，不需要再选</p>
-              <label class="field">
-                <span>繁简转换</span>
-                <select id="convert">
-                  <option value="none">保持原样</option>
-                  <option value="simplified">转为简体</option>
-                  <option value="traditional">转为繁体</option>
-                </select>
-              </label>
-              <p class="hint">只改解析结果，原始文件保持原样；切换后立即重新应用</p>
-              <label class="check">
-                <input id="filter-ads" type="checkbox" checked />
-                过滤广告 / 水印行
-              </label>
-              <button id="reparse" class="ghost small" type="button">重新识别</button>
+              <h3>本地草稿</h3>
+              <p id="draft-status" class="hint">改动会自动保存在这台设备上，刷新后可继续</p>
+              <button id="clear-draft" class="ghost small" type="button">从书架删除这本书</button>
             </div>
+        </div>
+      </div>
+    </div>
 
-            <details id="group-rules" class="group fold">
-              <summary class="fold-head">
-                <h3>识别规则</h3>
-                <span class="fold-caret" aria-hidden="true">▸</span>
-              </summary>
-              <div class="fold-body">
-                <label class="field">
-                  <span>站点</span>
-                  <select id="rule-preset">
-                    <option value="auto">自动识别（推荐）</option>
-                    <option value="ixdzs">爱下电子书</option>
-                    <option value="biquge">笔趣阁系</option>
-                    <option value="numbered">数字标题（1. 标题 / 12、）</option>
-                    <option value="bare-number">裸数字标题（123）</option>
-                    <option value="english">英文 Chapter / Section</option>
-                    <option value="custom">自定义…</option>
-                  </select>
-                </label>
-                <details id="rule-details" class="rules">
-                  <summary>自定义规则（JSON）</summary>
-                  <textarea id="rule-json" spellcheck="false" rows="5" placeholder='{"name":"我的规则","chapter":"^第\\d+章.*$","drop":["广告"]}'></textarea>
-                  <div class="rule-actions">
-                    <button id="rule-apply" class="ghost small" type="button">应用</button>
-                    <button id="rule-export" class="ghost small" type="button">导出</button>
-                    <button id="rule-import" class="ghost small" type="button">导入</button>
-                    <input id="rule-file" type="file" accept="application/json,.json" hidden />
-                  </div>
-                  <p id="rule-error" class="hint error" hidden></p>
-                </details>
-              </div>
-            </details>
-
-            <details id="group-clean" class="group fold">
-              <summary class="fold-head">
-                <h3>批量替换 / 清洗</h3>
-                <span class="fold-caret" aria-hidden="true">▸</span>
-              </summary>
-              <div class="fold-body">
-                <label class="field">
-                  <span>查找</span>
-                  <input id="replace-find" type="text" maxlength="200" placeholder="要查找的文字；勾选正则可写表达式" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>替换为</span>
-                  <input id="replace-with" type="text" maxlength="500" placeholder="留空表示删除命中内容" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>范围</span>
-                  <select id="replace-scope">
-                    <option value="all">标题 + 正文</option>
-                    <option value="body">仅正文</option>
-                    <option value="title">仅标题</option>
-                  </select>
-                </label>
-                <div class="replace-flags">
-                  <label class="check">
-                    <input id="replace-regex" type="checkbox" />
-                    正则
-                  </label>
-                  <label class="check">
-                    <input id="replace-case" type="checkbox" />
-                    区分大小写
-                  </label>
-                </div>
-                <div class="replace-actions">
-                  <button id="replace-preview" class="ghost small" type="button">预览命中</button>
-                  <button id="replace-apply" class="ghost small" type="button">执行替换</button>
-                </div>
-                <p id="replace-status" class="hint">替换前会自动记录一步，可撤销</p>
-                <div id="replace-results" class="replace-results" hidden></div>
-              </div>
-            </details>
-
-            <div class="group">
+    <div id="dialog-layout" class="app-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="dialog-layout-title">
+      <div class="app-dialog-card dialog-sm">
+        <div class="app-dialog-head">
+          <div>
+            <p class="notice-kicker">本机</p>
+            <h2 id="dialog-layout-title">排版</h2>
+          </div>
+          <button id="dialog-layout-close" class="app-dialog-close" type="button" aria-label="关闭排版">×</button>
+        </div>
+        <div class="app-dialog-body">
+<div class="group">
               <h3>排版</h3>
               <label class="field">
                 <span>字体</span>
@@ -870,16 +898,131 @@
                 <textarea id="custom-css" rows="3" spellcheck="false" placeholder="例如：p { line-height: 1.9; }"></textarea>
               </label>
             </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="dialog-rules" class="app-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="dialog-rules-title">
+      <div class="app-dialog-card dialog-lg">
+        <div class="app-dialog-head">
+          <div>
+            <p class="notice-kicker">本机</p>
+            <h2 id="dialog-rules-title">识别与替换</h2>
+          </div>
+          <button id="dialog-rules-close" class="app-dialog-close" type="button" aria-label="关闭识别与替换">×</button>
+        </div>
+        <div class="app-dialog-body">
+<div class="group">
+              <h3>文本处理</h3>
+              <label class="check">
+                <input id="filter-ads" type="checkbox" checked />
+                过滤广告 / 水印行
+              </label>
+              <button id="reparse" class="ghost small" type="button">重新识别</button>
+            </div>
+
+                        <div class="group">
+              <h3>识别规则</h3>
+                              <label class="field">
+                  <span>站点</span>
+                  <select id="rule-preset">
+                    <option value="auto">自动识别（推荐）</option>
+                    <option value="ixdzs">爱下电子书</option>
+                    <option value="biquge">笔趣阁系</option>
+                    <option value="numbered">数字标题（1. 标题 / 12、）</option>
+                    <option value="bare-number">裸数字标题（123）</option>
+                    <option value="english">英文 Chapter / Section</option>
+                    <option value="custom">自定义…</option>
+                  </select>
+                </label>
+                <div class="rules">
+                  <p class="rules-label">自定义规则（JSON）</p>
+                  <textarea id="rule-json" spellcheck="false" rows="5" placeholder='{"name":"我的规则","chapter":"^第\\d+章.*$","drop":["广告"]}'></textarea>
+                  <div class="rule-actions">
+                    <button id="rule-apply" class="ghost small" type="button">应用</button>
+                    <button id="rule-export" class="ghost small" type="button">导出</button>
+                    <button id="rule-import" class="ghost small" type="button">导入</button>
+                    <input id="rule-file" type="file" accept="application/json,.json" hidden />
+                  </div>
+                  <p id="rule-error" class="hint error" hidden></p>
+                </div>
+            </div>
+
+                        <div class="group">
+              <h3>批量替换 / 清洗</h3>
+                              <label class="field">
+                  <span>查找</span>
+                  <input id="replace-find" type="text" maxlength="200" placeholder="要查找的文字；勾选正则可写表达式" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>替换为</span>
+                  <input id="replace-with" type="text" maxlength="500" placeholder="留空表示删除命中内容" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>范围</span>
+                  <select id="replace-scope">
+                    <option value="all">标题 + 正文</option>
+                    <option value="body">仅正文</option>
+                    <option value="title">仅标题</option>
+                  </select>
+                </label>
+                <div class="replace-flags">
+                  <label class="check">
+                    <input id="replace-regex" type="checkbox" />
+                    正则
+                  </label>
+                  <label class="check">
+                    <input id="replace-case" type="checkbox" />
+                    区分大小写
+                  </label>
+                </div>
+                <div class="replace-actions">
+                  <button id="replace-preview" class="ghost small" type="button">预览命中</button>
+                  <button id="replace-apply" class="ghost small" type="button">执行替换</button>
+                </div>
+                <p id="replace-status" class="hint">替换前会自动记录一步，可撤销</p>
+                <div id="replace-results" class="replace-results" hidden></div>
+            </div>
 
             <div class="group">
-              <h3>本地草稿</h3>
-              <p id="draft-status" class="hint">改动会自动保存在这台设备上，刷新后可继续</p>
-              <button id="clear-draft" class="ghost small" type="button">从书架删除这本书</button>
+              <h3>导入与文本</h3>
+              <label class="field">
+                <span>编码</span>
+                <select id="encoding">
+                  <option value="auto">自动检测</option>
+                  <option value="utf-8">UTF-8</option>
+                  <option value="gb18030">GB18030 / GBK</option>
+                  <option value="big5">Big5</option>
+                  <option value="utf-16le">UTF-16 LE</option>
+                  <option value="utf-16be">UTF-16 BE</option>
+                </select>
+              </label>
+              <p id="encoding-note" class="hint" hidden>EPUB 里的文字自带编码，不需要再选</p>
+              <label class="field">
+                <span>繁简转换</span>
+                <select id="convert">
+                  <option value="none">保持原样</option>
+                  <option value="simplified">转为简体</option>
+                  <option value="traditional">转为繁体</option>
+                </select>
+              </label>
+              <p class="hint">只改解析结果，原始文件保持原样；切换后立即重新应用</p>
             </div>
-            </div>
-          </div>
+        </div>
+      </div>
+    </div>
 
-          <div class="group export-group">
+    <div id="dialog-export" class="app-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="dialog-export-title">
+      <div class="app-dialog-card dialog-sm">
+        <div class="app-dialog-head">
+          <div>
+            <p class="notice-kicker">本机</p>
+            <h2 id="dialog-export-title">导出</h2>
+          </div>
+          <button id="dialog-export-close" class="app-dialog-close" type="button" aria-label="关闭导出">×</button>
+        </div>
+        <div class="app-dialog-body">
+<div class="group export-group">
             <label class="field">
               <span>导出格式</span>
               <select id="export-format">
@@ -911,63 +1054,62 @@
               </div>
             </div>
           </div>
-        </aside>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <span>本地优先 · 免费 · 无需登录</span>
-      <span class="footer-meta">
-        <button id="shortcuts-link" class="footer-link" type="button">快捷键</button>
-        <span aria-hidden="true">·</span>
-        <a class="footer-link" href="/changelog.html">更新日志</a>
-        <span aria-hidden="true">·</span>
-        <a class="footer-link" href="#faq">常见问题</a>
-        <span aria-hidden="true">·</span>
-        <a
-          class="footer-link"
-          href="https://github.com/xiaoxura/txt2book"
-          target="_blank"
-          rel="noopener noreferrer"
-        >MIT 开源项目</a>
-        <span aria-hidden="true" id="install-sep" hidden>·</span>
-        <button id="install-app" class="footer-link" type="button" hidden>安装到桌面</button>
-      </span>
-    </footer>
-
-    <div id="cover-view" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="封面大图">
-      <button id="cover-view-close" class="lightbox-close" type="button" aria-label="关闭封面预览">×</button>
-      <img id="cover-view-img" alt="封面大图" />
-      <p class="lightbox-hint">点击空白处或按 Esc 关闭</p>
+        </div>
+      </div>
     </div>
 
-    <div id="shortcuts" class="lightbox shortcuts" hidden role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
-      <div class="shortcuts-card">
-        <div class="shortcuts-head">
+
+    <div id="diag-dialog" class="app-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="diag-dialog-title">
+      <div class="app-dialog-card dialog-sm">
+        <div class="app-dialog-head">
           <div>
-            <p class="notice-kicker">键盘</p>
-            <h2 id="shortcuts-title">快捷键</h2>
+            <p class="notice-kicker">正文结构</p>
+            <h2 id="diag-dialog-title">全书体检</h2>
           </div>
-          <button id="shortcuts-close" class="lightbox-close" type="button" aria-label="关闭快捷键帮助">×</button>
+          <button id="diag-dialog-close" class="app-dialog-close" type="button" aria-label="关闭全书体检">×</button>
         </div>
-        <div class="shortcuts-list">
-          <div class="shortcut-row"><span><kbd>↑</kbd> <kbd>↓</kbd> 或 <kbd>J</kbd> <kbd>K</kbd></span><span>切换上一章 / 下一章</span></div>
-          <div class="shortcut-row"><span><kbd>/</kbd></span><span>聚焦章节搜索</span></div>
-          <div class="shortcut-row"><span><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>S</kbd></span><span>按当前格式导出</span></div>
-          <div class="shortcut-row"><span><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd></span><span>撤销</span></div>
-          <div class="shortcut-row"><span><kbd>Shift</kbd> + <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd></span><span>重做</span></div>
-          <div class="shortcut-row"><span><kbd>Esc</kbd></span><span>关闭浮层 / 取消段落选择</span></div>
-          <div class="shortcut-row"><span><kbd>?</kbd></span><span>打开这个帮助</span></div>
+        <div class="app-dialog-body">
+          <div id="diagnostics" class="diag" hidden>
+            <p id="diag-summary" class="diag-summary" aria-live="polite"></p>
+            <div id="diag-list" class="diag-list"></div>
+            <div class="diag-actions">
+              <button
+                id="audit-renumber"
+                class="ghost small"
+                type="button"
+                title="按顺序重编号：只改章号数字，保留中文 / 阿拉伯数字风格"
+              >按顺序重编号</button>
+            </div>
+          </div>
         </div>
-        <p class="hint">在输入框里，单键快捷键会让给输入法；Ctrl / ⌘ + S 仍然可用。</p>
       </div>
     </div>
 
 
     <div id="row-menu" class="row-menu" role="menu" hidden></div>
+    <div id="top-more-menu" class="top-more-menu" role="menu" hidden>
+      <button class="top-more-item" type="button" role="menuitem" data-more="diag">
+        <span class="row-menu-glyph">诊</span>全书体检
+      </button>
+      <button class="top-more-item" type="button" role="menuitem" data-more="help">
+        <span class="row-menu-glyph">?</span>快捷键帮助
+      </button>
+      <button class="top-more-item" type="button" role="menuitem" data-more="notice">
+        <span class="row-menu-glyph">铃</span>更新公告
+      </button>
+      <button class="top-more-item" type="button" role="menuitem" data-more="theme">
+        <span class="row-menu-glyph">◐</span>切换主题
+      </button>
+      <button class="top-more-item" type="button" role="menuitem" data-more="install" hidden>
+        <span class="row-menu-glyph">↓</span>安装到桌面
+      </button>
+      <button class="top-more-item" type="button" role="menuitem" data-more="github">
+        <span class="row-menu-glyph">Git</span>GitHub 源码
+      </button>
+    </div>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <noscript>
-      文件转换需要启用 JavaScript。txt2book 是一个纯浏览器本地运行的 TXT / EPUB / DOCX
+      文件转换需要启用 JavaScript。BookLoom 是一个纯浏览器本地运行的 TXT / EPUB / DOCX
       电子书转换与排版工具；上面的使用步骤、设备导入指南和常见问题不需要脚本也能阅读。
     </noscript>
     <script type="module" src="/src/main.ts"></script>

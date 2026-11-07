@@ -1,4 +1,4 @@
-import { findHeadingCandidates, guessTitle } from './core/chapters';
+import { extractIntroMeta, findHeadingCandidates, guessTitle } from './core/chapters';
 import {
   DEFAULT_COVER_OPTIONS,
   coverThumbnail,
@@ -14,7 +14,11 @@ import {
   estimateStorage,
   listBooks,
   loadBook,
+  loadBookSource,
+  markBookDeleted,
+  purgeExpiredDeletedBooks,
   renameBook as renameBookRecord,
+  restoreBook,
   saveBookDraft,
   saveBookFont,
   saveBookSource,
@@ -28,21 +32,28 @@ import { auditChapters, renumberChapters } from './core/audit';
 import {
   applyReplace,
   previewReplace,
+  validateReplaceOptions,
   type ReplaceMatch,
   type ReplaceOptions,
   type ReplacePreview,
 } from './core/replace';
 import {
+  dissolveVolume as dissolveVolumeCore,
+  insertChapter,
+  insertVolumeAfter,
   mergeChapterUp,
+  moveChaptersToVolume as moveChaptersCore,
   removeChapterAt,
+  editParagraphAt,
+  deleteParagraphAt as removeParagraphAt,
+  insertParagraphAfter as addParagraphAfter,
+  setVolumeFromParagraph as setVolumeFromParagraphCore,
   splitChapterAt,
   suggestChapterTitle,
-  toggleChapterLevel,
 } from './core/edit';
-import { dismissNotice, initNotice } from './notice';
+import { hideNoticeBanner, initNotice } from './notice';
 import type { Chapter, ConvertMode, CoverAuthorPosition, CoverPalette, ParseResult } from './types';
 import {
-  buildFormattedBook,
   download,
   exportBook as exportBookAction,
   formatBytes,
@@ -51,6 +62,7 @@ import {
 } from './app/export';
 import { els } from './app/dom';
 import { createRenderer } from './app/render';
+import { beginModal } from './app/modal';
 import { bindEvents, type CoverUpdate, type EventDeps } from './app/events';
 import { handleGlobalKeydown, type ShortcutDeps } from './app/shortcuts';
 import {
@@ -61,6 +73,7 @@ import {
   loadTheme,
   saveExportFormat,
   saveLastBookId,
+  saveListPageSize,
   saveLayout,
   saveTheme,
   type ExportFormat,
@@ -143,15 +156,21 @@ const workerClient = new WorkerClient(
     onError: (error) => {
       // Worker 被重置后内存里的原文也没了，禁用重新识别，避免误以为还能用
       state.sourceReady = false;
-      setStatus(`后台线程出错：${error.message}`, 'error');
+      const kind =
+        state.parsed?.sourceType === 'epub'
+          ? 'EPUB'
+          : state.parsed?.sourceType === 'docx'
+            ? 'DOCX'
+            : 'TXT';
+      setStatus(`处理过程意外中断：${error.message}`, 'error');
       render.controls();
-      toast('后台线程已重置，请重试；重新识别需要重新拖入 TXT');
+      toast(`后台线程已重置，请重试；重新读入需要重新拖入原文件（当前是 ${kind}）`);
     },
   },
 );
 
-function call(payload: RequestPayload, transfer: Transferable[] = []): Promise<FromWorker> {
-  return workerClient.call(payload, transfer);
+function call(payload: RequestPayload, transfer: Transferable[] = [], timeoutMs = 0): Promise<FromWorker> {
+  return workerClient.call(payload, transfer, timeoutMs);
 }
 
 /* ---------------- 状态与渲染 ---------------- */
@@ -170,14 +189,13 @@ function stepChapter(delta: -1 | 1) {
   if (index < 0) return;
   const next = state.chapters[index + delta];
   if (!next) return;
+  // 从搜索定位跳出后继续切章：清掉搜索态，让目录回到完整列表跟随高亮
+  if (state.filter) {
+    state.filter = '';
+    els.chapterSearch.value = '';
+    render.list();
+  }
   setActive(next.id);
-  if (isMobileViewport()) return;
-  requestAnimationFrame(() => {
-    const row = Array.from(els.chapterList.querySelectorAll<HTMLElement>('.chapter-row')).find(
-      (item) => item.dataset.id === next.id,
-    );
-    row?.scrollIntoView({ block: 'nearest' });
-  });
 }
 
 /* ---------------- 段落选择 / 诊断 ---------------- */
@@ -213,11 +231,14 @@ function recomputeDiagnostics() {
 
 
 
+let coverModalCleanup: (() => void) | null = null;
+
 function openCoverView() {
   if (!state.coverUrl) return;
   els.coverViewImg.src = state.coverUrl;
   els.coverView.hidden = false;
   document.body.style.overflow = 'hidden';
+  coverModalCleanup = beginModal(els.coverView);
   els.coverViewClose.focus();
 }
 
@@ -225,6 +246,8 @@ function closeCoverView(restoreFocus = false) {
   if (els.coverView.hidden) return;
   els.coverView.hidden = true;
   document.body.style.overflow = '';
+  coverModalCleanup?.();
+  coverModalCleanup = null;
   if (restoreFocus) els.coverThumb.focus();
 }
 
@@ -236,15 +259,36 @@ function closeCoverView(restoreFocus = false) {
 function setStatus(message: string, kind: 'normal' | 'error' = 'normal') {
   els.status.textContent = message;
   els.status.classList.toggle('error', kind === 'error');
+  // 右栏底部的状态小字同步显示，导出结果不用打开弹窗也能看到
+  els.railStatus.textContent = message;
+  els.railStatus.classList.toggle('error', kind === 'error');
 }
 
 let dropLoading = false;
+
+/** 解析中给一个取消入口：取消 = 忽略本次结果 + 终止后台任务，当前书保持原样 */
+const cancelLoadButton = document.createElement('button');
+cancelLoadButton.type = 'button';
+cancelLoadButton.className = 'ghost small';
+cancelLoadButton.textContent = '取消';
+cancelLoadButton.addEventListener('click', () => cancelActiveLoad());
+els.dropLoading.appendChild(cancelLoadButton);
+
+let activeLoadCancelled = false;
+
+function cancelActiveLoad(): void {
+  if (!dropLoading) return;
+  activeLoadCancelled = true;
+  loadEpoch += 1;
+  workerClient.cancelAll(new Error('已取消'));
+}
 
 function setDropLoading(active: boolean, phase?: string): void {
   dropLoading = active;
   els.dropZone.classList.toggle('is-loading', active);
   els.dropZone.setAttribute('aria-busy', active ? 'true' : 'false');
   els.dropLoading.hidden = !active;
+  cancelLoadButton.hidden = !active;
   els.appProgress.hidden = !active;
   els.pickFile.disabled = active;
   els.loadSample.disabled = active;
@@ -277,7 +321,83 @@ function toast(message: string, action?: { label: string; onClick: () => void })
   }
   els.toast.hidden = false;
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(hideToast, action ? 6000 : 3200);
+  // 带动作的提示给 10 秒；悬停 / 触摸按住时暂停计时，读得完再走
+  toastTimer = window.setTimeout(hideToast, action ? 10000 : 3200);
+}
+
+els.toast.addEventListener('mouseenter', () => window.clearTimeout(toastTimer));
+els.toast.addEventListener('mouseleave', () => {
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(hideToast, 1600);
+});
+
+/* ---------------- 确认对话框 ---------------- */
+
+interface ConfirmOptions {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+}
+
+/** 轻量确认框：覆盖手动校对这类破坏性操作前使用；Esc / 点空白 = 取消 */
+function confirmDialog(options: ConfirmOptions): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'lightbox';
+    overlay.style.zIndex = '300';
+
+    const card = document.createElement('div');
+    card.className = 'shortcuts-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-label', options.title);
+
+    const heading = document.createElement('h2');
+    heading.textContent = options.title;
+    const body = document.createElement('p');
+    body.className = 'hint';
+    body.style.marginTop = '10px';
+    body.style.lineHeight = '1.7';
+    body.textContent = options.message;
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:18px;';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'ghost';
+    cancel.textContent = options.cancelLabel ?? '取消';
+    const ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = options.danger ? 'danger' : 'primary';
+    ok.textContent = options.confirmLabel ?? '确定';
+    row.append(cancel, ok);
+
+    card.append(heading, body, row);
+    overlay.append(card);
+    document.body.append(overlay);
+
+    const settle = (result: boolean) => {
+      cleanup();
+      overlay.remove();
+      resolve(result);
+    };
+    const cleanup = beginModal(card);
+    cancel.addEventListener('click', () => settle(false));
+    ok.addEventListener('click', () => settle(true));
+    ok.focus();
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) settle(false);
+    });
+    overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        settle(false);
+      }
+    });
+  });
 }
 
 /* ---------------- 解析 ---------------- */
@@ -309,10 +429,24 @@ function showWorkspace() {
   els.privacy.hidden = true;
   els.batch.hidden = true;
   hideExportResult();
-  dismissNotice();
+  // 只收起首访提示条，不标记已读：用户没点开过公告，下次进入仍应看到
+  hideNoticeBanner();
   // 校对章节是导入后的主任务，手机上先给目录，预览随时可切
   setMobileView('chapters');
 }
+
+/** 落地页的导入失败信息：写在常驻错误块里，不会随 toast 消失 */
+function showImportError(message: string): void {
+  els.importErrorText.textContent = message;
+  els.importError.hidden = false;
+}
+
+function hideImportError(): void {
+  els.importError.hidden = true;
+  lastAttemptFile = null;
+}
+
+let lastAttemptFile: File | null = null;
 
 function showLanding() {
   els.workspace.hidden = true;
@@ -332,8 +466,150 @@ function setActive(id: string | null) {
   document.querySelectorAll<HTMLElement>('.chapter-row').forEach((row) => {
     row.classList.toggle('active', row.dataset.id === id);
   });
+  ensureActiveRowVisible(id);
   render.preview();
   if (id && isMobileViewport() && mobileView !== 'preview') setMobileView('preview', true);
+}
+
+/**
+ * 让左侧列表的高亮行一定可见：
+ * - 高亮行不在渲染窗口里（长书跳章）→ 把窗口挪到覆盖当前章后再重渲染；
+ * - 行存在 → 滚动列表使其进入可视区，视觉上「左侧跟着切换」。
+ */
+function ensureActiveRowVisible(id: string | null): void {
+  if (!id) return;
+  const index = state.chapters.findIndex((chapter) => chapter.id === id);
+  if (index < 0) return;
+  const row = Array.from(els.chapterList.querySelectorAll<HTMLElement>('.chapter-row')).find(
+    (item) => item.dataset.id === id,
+  );
+  if (!row) {
+    if (state.filter.trim()) return; // 搜索态下高亮行就是命中行本身
+    state.listWindowStart = Math.max(
+      0,
+      Math.min(index - 200, Math.max(0, state.chapters.length - 400)),
+    );
+    render.list();
+  }
+  requestAnimationFrame(() => {
+    const target = Array.from(
+      els.chapterList.querySelectorAll<HTMLElement>('.chapter-row'),
+    ).find((item) => item.dataset.id === id);
+    target?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+/** 目录窗口门牌：回到开头 / 定位当前章 */
+function jumpListWindow(mode: 'top' | 'active' | 'prev' | 'next'): void {
+  if (mode === 'top') {
+    state.listWindowStart = 0;
+    render.list();
+    els.chapterList.scrollTop = 0;
+    return;
+  }
+  if (mode === 'next') {
+    // 翻到下一页，从页头继续浏览
+    state.listWindowStart += state.listPageSize;
+    render.list();
+    els.chapterList.scrollTop = 0;
+    return;
+  }
+  if (mode === 'prev') {
+    // 翻回上一页
+    state.listWindowStart = Math.max(0, state.listWindowStart - state.listPageSize);
+    render.list();
+    els.chapterList.scrollTop = 0;
+    return;
+  }
+  const id = state.activeId;
+  if (id) {
+    ensureActiveRowVisible(id);
+    flashChapterRow(id);
+  } else {
+    state.listWindowStart = 0;
+    render.list();
+  }
+}
+
+/** 改目录每页章数；保持用户正看到的第一章在在可视页内 */
+function setListPageSize(size: number): void {
+  if (![100, 200, 400, 800].includes(size)) return;
+  const firstShown = state.listWindowStart;
+  state.listPageSize = size;
+  saveListPageSize(size);
+  state.listWindowStart = Math.floor(firstShown / size) * size;
+  render.list();
+}
+
+/* ---------------- 批量移动模式 ---------------- */
+
+function setMultiMode(on: boolean): void {
+  state.multiMode = on;
+  state.multiSelect = [];
+  if (on) selectParagraph(null);
+  render.list();
+  els.multiToggle.setAttribute('aria-pressed', String(on));
+  if (on) toast('多选模式：点章节行勾选（卷本身不参与移动），选好后按「移动到卷…」');
+}
+
+function toggleMultiSelect(id: string): void {
+  if (!id) return;
+  const chapter = state.chapters.find((item) => item.id === id);
+  if (!chapter || chapter.level === 1) return; // 卷是文件夹，不参与移动
+  const next = state.multiSelect.includes(id)
+    ? state.multiSelect.filter((item) => item !== id)
+    : [...state.multiSelect, id];
+  state.multiSelect = next;
+  render.list();
+}
+
+function selectAllVisible(): void {
+  const ids = Array.from(els.chapterList.querySelectorAll<HTMLElement>('.chapter-row'))
+    .map((row) => row.dataset.id)
+    .filter((id): id is string => Boolean(id))
+    .filter((id) => {
+      const chapter = state.chapters.find((item) => item.id === id);
+      return chapter?.level === 2;
+    });
+  state.multiSelect = Array.from(new Set([...state.multiSelect, ...ids]));
+  render.list();
+}
+
+/** 跳转定位后给目标行一个短暂的高亮闪烁，让「跳过来了」看得见 */
+function flashChapterRow(id: string): void {
+  requestAnimationFrame(() => {
+    const row = Array.from(els.chapterList.querySelectorAll<HTMLElement>('.chapter-row')).find(
+      (item) => item.dataset.id === id,
+    );
+    if (!row?.animate) return;
+    row.scrollIntoView({ block: 'nearest' });
+    row.animate(
+      [
+        { outline: '2px solid rgba(214, 134, 61, 0.95)', outlineOffset: '-2px' },
+        { outline: '2px solid rgba(214, 134, 61, 0)', outlineOffset: '-2px' },
+      ],
+      { duration: 1200, easing: 'ease-out' },
+    );
+  });
+}
+
+function revealChapter(id: string): void {
+  setActive(id);
+  if (isMobileViewport()) return;
+  flashChapterRow(id);
+}
+
+/** 第一次进工作区时提示一次行内操作，之后不再打扰 */
+function maybeShowRowHint(): void {
+  try {
+    if (localStorage.getItem('txt2book.rowHintSeen') === '1') return;
+    localStorage.setItem('txt2book.rowHintSeen', '1');
+  } catch {
+    return;
+  }
+  window.setTimeout(() => {
+    toast('提示：点章节名可以改标题，行尾「⋯」里有全部操作');
+  }, 1500);
 }
 
 interface ApplyResultOptions {
@@ -342,6 +618,9 @@ interface ApplyResultOptions {
   /** 重新解析后按原下标恢复当前章节 */
   activeIndex?: number;
 }
+
+/** 卷首简介识别成功后，状态栏补一句提示，告诉你信息去了哪里 */
+const recommendedIntroSuffix = '；卷首简介已自动填入「设置 - 书籍信息」';
 
 function applyResult(result: ParseResult, options: ApplyResultOptions = {}) {
   const preservedMeta = options.preserveMeta ? { ...state.meta } : null;
@@ -352,20 +631,34 @@ function applyResult(result: ParseResult, options: ApplyResultOptions = {}) {
   state.sourceReady = true;
   state.parsed = result;
   state.chapters = result.chapters;
-  const indexed = options.activeIndex === undefined ? undefined : result.chapters[options.activeIndex];
+
+  // 卷首信息章（『占有者/状态：已完结』『内容简介:…』）→ 填进书籍信息并隐藏该章
+  let chapters = result.chapters;
+  if (!options.preserveMeta) {
+    const intro = extractIntroMeta(chapters);
+    state.meta.description = intro.meta.description;
+    state.meta.status = intro.meta.status;
+    chapters = intro.remaining;
+    if (intro.meta.description || intro.meta.status) {
+      state.chapters = chapters;
+    }
+  }
+
+  const indexed = options.activeIndex === undefined ? undefined : chapters[options.activeIndex];
   state.activeId =
     indexed?.id ??
-    result.chapters.find((chapter) => chapter.paragraphs.length)?.id ??
-    result.chapters[0]?.id ??
+    chapters.find((chapter) => chapter.paragraphs.length)?.id ??
+    chapters[0]?.id ??
     null;
   // 新书 / 重新识别的结果与旧历史无关
   history.clear();
   titleEditBase = null;
   state.filter = '';
   state.selectedParagraph = null;
-  state.diagDismissed = false;
-  state.diagOpen = true;
   state.idSeed = 0;
+  state.listWindowStart = 0;
+  state.multiSelect = [];
+  state.multiMode = false;
   els.chapterSearch.value = '';
   els.chapterSearch.hidden = false;
 
@@ -397,17 +690,54 @@ function applyResult(result: ParseResult, options: ApplyResultOptions = {}) {
   recomputeDiagnostics();
   render.all();
   resetReplacePanel();
+  const introNotice =
+    state.meta.description || state.meta.status ? recommendedIntroSuffix : '';
   setStatus(
     fromEpub
-      ? `已读入 EPUB · ${result.chapters.length} 章`
+      ? `已读入 EPUB · ${chapters.length} 章`
       : fromDocx
-        ? `已读入 DOCX · ${result.chapters.length} 章`
-        : `识别完成 · ${result.chapters.length} 章`,
+        ? `已读入 DOCX · ${chapters.length} 章`
+        : `识别完成 · ${chapters.length} 章${introNotice}`,
   );
   updateHistoryControls();
   scheduleDraftSave(300);
   if (!state.cover) scheduleAutoCover();
   scheduleCoverPreview(0);
+}
+
+/** 分片读取文件，顺带把真实读取进度报到加载区 */
+async function readFileWithProgress(file: File): Promise<ArrayBuffer> {
+  const chunks: Uint8Array[] = [];
+  const step = 4 * 1024 * 1024;
+  for (let offset = 0; offset < file.size; offset += step) {
+    const slice = file.slice(offset, Math.min(offset + step, file.size));
+    const buffer = await slice.arrayBuffer();
+    chunks.push(new Uint8Array(buffer));
+    const percent = Math.min(100, Math.round(((offset + buffer.byteLength) / file.size) * 100));
+    setDropLoading(true, `正在读取「${file.name}」… ${percent}%`);
+  }
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const out = new Uint8Array(total);
+  let cursor = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, cursor);
+    cursor += chunk.length;
+  }
+  return out.buffer;
+}
+
+/** 书架快占满时提前打招呼，免得导入/保存悄悄失败 */
+async function warnIfStorageTight(fileSize: number): Promise<void> {
+  try {
+    const estimate = await estimateStorage();
+    if (!estimate?.quota) return;
+    const remaining = estimate.quota - estimate.usage;
+    if (remaining <= 0 || (estimate.usage / estimate.quota > 0.85 && fileSize > remaining)) {
+      toast('本机存储空间快用完了，建议去书架删掉不看的书释放空间');
+    }
+  } catch {
+    /* 容量信息拿不到就算了 */
+  }
 }
 
 async function loadFile(file: File) {
@@ -416,19 +746,25 @@ async function loadFile(file: File) {
     return;
   }
   if (file.size > 80 * 1024 * 1024) {
-    const message = '文件超过 80MB，浏览器内存可能不够';
+    const message = '文件超过 80MB，浏览器内存可能不够；请拆分后分次导入，或用批量转换';
     setStatus(message, 'error');
     toast(message);
+    if (els.dropZone.hidden) showLanding();
     return;
   }
 
+  hideImportError();
+  lastAttemptFile = file;
   // 换书前先把当前这本的改动落盘，避免旧书丢失最后一次编辑
   cancelScheduledDraftSave();
   await saveDraftNow();
+  void warnIfStorageTight(file.size);
 
   const epoch = ++loadEpoch;
+  activeLoadCancelled = false;
   state.busy = true;
   els.export.disabled = true;
+  els.railExport.disabled = true;
   els.reparse.disabled = true;
   // 新书默认重新自动检测，不能沿用上一本手动选的编码
   els.encoding.value = 'auto';
@@ -436,10 +772,12 @@ async function loadFile(file: File) {
   setDropLoading(true, `正在读取「${file.name}」…`);
 
   try {
-    const buffer = await file.arrayBuffer();
+    const buffer = await readFileWithProgress(file);
+    setDropLoading(true, '正在解析章节…');
     const res = await call(
       { type: 'parse', buffer, filename: file.name, options: parseOptions() },
       [buffer],
+      120_000,
     );
     if (res.type !== 'parsed' || epoch !== loadEpoch) return;
 
@@ -452,24 +790,48 @@ async function loadFile(file: File) {
     state.coverThumb = null;
     state.coverAuto = true;
     state.font = null;
+    lastAttemptFile = null;
     showWorkspace();
     window.scrollTo(0, 0);
     applyResult(res.result);
+    maybeShowRowHint();
     if (isMobileViewport()) {
       toast(`已识别 ${res.result.chapters.length} 章，可在目录里校对`, {
         label: '看预览',
         onClick: () => setMobileView('preview', true),
       });
+    } else {
+      toast(`已识别 ${res.result.chapters.length} 章，校对后点右侧「导出」生成电子书`);
     }
     saveLastBookId(state.bookId);
     void persistSourceWithDraft(file, epoch);
   } catch (error) {
-    const message = error instanceof Error ? error.message : '解析失败';
-    setStatus(message, 'error');
-    toast(`解析失败：${message}`);
+    if (activeLoadCancelled) {
+      toast('已取消导入，当前书保持原样');
+      void restoreWorkerSource();
+    } else {
+      const message = error instanceof Error ? error.message : '解析失败';
+      setStatus(message, 'error');
+      toast(`解析失败：${message}`);
+      // 落地页上给一个不会消失的错误块，说明原因并提供重试入口
+      if (!els.dropZone.hidden) showImportError(`解析「${file.name}」失败：${message}`);
+    }
   } finally {
     setDropLoading(false);
     state.busy = false;
+    render.controls();
+  }
+}
+
+/** 取消/批量之后把当前书的原文塞回 Worker，保住「重新识别」能力 */
+async function restoreWorkerSource(): Promise<void> {
+  if (!state.bookId) return;
+  try {
+    const source = await loadBookSource(state.bookId);
+    if (!source || !sourceMatchesDraft(draftSnapshot(), source)) return;
+    await call({ type: 'source', buffer: source.data, filename: source.name }, [source.data], 15_000);
+  } catch {
+    state.sourceReady = false;
     render.controls();
   }
 }
@@ -493,17 +855,28 @@ async function reparse(options: ReparseOptions = {}) {
   if (!state.sourceReady) {
     toast(
       options.conversion
-        ? '草稿没有原始文件，重新拖入原文件后才能应用繁简转换'
-        : '草稿没有可用的原始文件，重新拖入原文件后才能换编码或重新识别',
+        ? '草稿没有原文件，重新拖入原文件后才能应用繁简转换'
+        : '草稿没有可用的原文件，重新拖入原文件后才能换编码或重新识别',
     );
     return;
+  }
+  // 有手动校对时先确认：重新识别/转换会把分章、合并、删除、改名全部覆盖
+  if (history.canUndo) {
+    const ok = await confirmDialog({
+      title: options.conversion ? '繁简转换会覆盖手动校对' : '重新识别会覆盖手动校对',
+      message:
+        '这一步会丢弃你手动做过的分章、合并、删除和改标题（改标题也会被还原），建议先导出一份备份。要继续吗？',
+      confirmLabel: options.conversion ? '继续转换' : '重新识别',
+      danger: true,
+    });
+    if (!ok) return;
   }
   state.busy = true;
   render.controls();
   setStatus(`正在${reading}…`);
   const activeIndex = state.chapters.findIndex((chapter) => chapter.id === state.activeId);
   try {
-    const res = await call({ type: 'reparse', options: parseOptions() });
+    const res = await call({ type: 'reparse', options: parseOptions() }, [], 120_000);
     if (res.type !== 'parsed') return;
     if (options.conversion) {
       applyResult(res.result, { preserveMeta: true, activeIndex });
@@ -516,10 +889,12 @@ async function reparse(options: ReparseOptions = {}) {
       );
     } else {
       applyResult(res.result);
-      toast('已按新的设置重新识别，手动改过的标题会被覆盖');
+      toast('已按新的设置重新识别');
     }
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : `${reading}失败`, 'error');
+    const message = error instanceof Error ? error.message : `${reading}失败`;
+    setStatus(message, 'error');
+    toast(`${reading}失败：${message}`);
   } finally {
     state.busy = false;
     render.controls();
@@ -539,7 +914,7 @@ function setConvert(value: string): void {
     return;
   }
   if (!state.sourceReady) {
-    toast('草稿没有原始文件，重新拖入原文件后才能应用繁简转换');
+    toast('草稿没有原文件，重新拖入原文件后才能应用繁简转换');
     return;
   }
   void reparse({ allowStructured: true, conversion: true });
@@ -768,10 +1143,12 @@ function applyChapterState(chapters: Chapter[], activeId: string | null, focusTi
   state.chapters = chapters;
   state.activeId = activeId;
   state.selectedParagraph = null;
+  state.editingParagraph = null;
   render.stats();
   render.list();
   render.preview();
   render.controls();
+  ensureActiveRowVisible(activeId);
   recomputeDiagnostics();
   updateHistoryControls();
   scheduleDraftSave();
@@ -873,6 +1250,10 @@ function focusChapterTitle(id: string) {
 function deleteChapter(index: number) {
   const chapter = state.chapters[index];
   if (!chapter) return;
+  if (chapter.level === 1) {
+    toast('卷是文件夹没有正文；要移除卷请用「取消分卷」，章节会自动归属上一个卷');
+    return;
+  }
   if (state.chapters.length <= 1) {
     toast('至少保留一章');
     return;
@@ -883,6 +1264,84 @@ function deleteChapter(index: number) {
   if (!nextActive) return;
   commitChapters(next, nextActive.id, '删除章节');
   toast(`已删除「${chapter.title}」`, {
+    label: '撤销',
+    onClick: () => {
+      undoChapters();
+    },
+  });
+}
+
+/* ---------------- 正文段落：新增 / 编辑 / 删除 ---------------- */
+
+/** 保存编辑器里的段落内容；没变化时安静退出编辑态 */
+function editParagraphFrom(textarea: HTMLTextAreaElement): void {
+  if (textarea.dataset.done === '1') return;
+  textarea.dataset.done = '1';
+  const chapterIndex = state.chapters.findIndex((c) => c.id === state.activeId);
+  const paragraphIndex = Number(textarea.dataset.index);
+  if (chapterIndex < 0 || !Number.isFinite(paragraphIndex)) {
+    cancelParagraphEdit();
+    return;
+  }
+  if (textarea.dataset.cancel === '1') {
+    cancelParagraphEdit();
+    return;
+  }
+  const text = textarea.value;
+  const original = textarea.dataset.original ?? '';
+  if (text === original) {
+    cancelParagraphEdit();
+    return;
+  }
+  const next = editParagraphAt(state.chapters, chapterIndex, paragraphIndex, text);
+  commitChapters(next, state.activeId ?? '', '编辑正文');
+}
+
+function cancelParagraphEdit(): void {
+  if (!state.editingParagraph) return;
+  state.editingParagraph = null;
+  render.preview();
+}
+
+function beginParagraphEdit(chapterIndex: number, paragraphIndex: number): void {
+  const chapter = state.chapters[chapterIndex];
+  if (!chapter) return;
+  state.editingParagraph = { chapterId: chapter.id, paragraphIndex };
+  const chapterId = chapter.id;
+  if (state.activeId !== chapterId) {
+    state.activeId = chapterId;
+    render.list();
+  }
+  render.preview();
+}
+
+function insertParagraph(chapterIndex: number, afterIndex: number): void {
+  const chapter = state.chapters[chapterIndex];
+  if (!chapter) return;
+  const { chapters: next, paragraphIndex } = addParagraphAfter(
+    state.chapters,
+    chapterIndex,
+    afterIndex,
+  );
+  if (paragraphIndex < 0) return;
+  commitChapters(next, chapter.id, '新增段落');
+  // commit 已把编辑态清掉 → 直接挂新空段并重渲染（同步两步，避免 rAF 竞态）
+  state.editingParagraph = { chapterId: chapter.id, paragraphIndex };
+  if (state.activeId === chapter.id) render.preview();
+}
+
+function deleteParagraph(paragraphIndex: number, chapterIndex: number): void {
+  const chapter = state.chapters[chapterIndex];
+  if (!chapter) return;
+  const result = removeParagraphAt(state.chapters, chapterIndex, paragraphIndex);
+  if (result.chapters === state.chapters) return;
+  const nextActiveId = result.removedChapter
+    ? state.chapters[chapterIndex - 1]?.id ??
+      state.chapters[chapterIndex + 1]?.id ??
+      ''
+    : chapter.id;
+  commitChapters(result.chapters, nextActiveId, '删除段落');
+  toast(result.removedChapter ? '段落删空后这一章也一并移除了' : '已删除这一段', {
     label: '撤销',
     onClick: () => {
       undoChapters();
@@ -957,16 +1416,143 @@ function splitAt(chapterIndex: number, paragraphIndex: number, mode: 'split' | '
   });
 }
 
-function setChapterLevel(index: number) {
-  const chapter = state.chapters[index];
-  if (!chapter) return;
-  const next = toggleChapterLevel(state.chapters, index);
-  if (next === state.chapters) return;
-  commitChapters(next, chapter.id, '调整章节层级');
-  toast(chapter.level === 1 ? '已降为普通章节' : '已升为卷');
+/* ---------------- 卷 / 章节结构操作 ---------------- */
+
+function newId(): string {
+  return `ch-new-${++state.idSeed}`;
 }
 
-/* ---------------- 批量替换 / 体检修复 ---------------- */
+/** 在某章前 / 后插入空白章节，等待用户改标题、填正文（手动补章） */
+function insertChapterAt(index: number, position: 'before' | 'after'): void {
+  const anchor = state.chapters[index];
+  if (!anchor) return;
+  const next = insertChapter(state.chapters, index, position, newId());
+  if (next === state.chapters) return;
+  const createdIndex = position === 'before' ? index : index + 1;
+  const created = next[createdIndex];
+  commitChapters(next, created.id, '新建章节', true);
+  toast(position === 'before' ? '已在前面插入新章节，直接改标题' : '已在后面插入新章节，直接改标题');
+}
+
+/** 在某章后新建一个空卷文件夹；章节进卷用「多选」批量移动 */
+function addVolumeAfter(index: number): void {
+  const anchor = state.chapters[index];
+  if (!anchor) return;
+  const volumeId = newId();
+  const next = insertVolumeAfter(state.chapters, index, volumeId);
+  if (next === state.chapters) return;
+  commitChapters(next, volumeId, '新建卷');
+  toast('新卷是空文件夹；点「多选」勾选章节后可批量移动进来', { label: '开始多选', onClick: () => setMultiMode(true) });
+}
+
+/** 取消分卷：卷标题行删掉，其下章节按顺序归属上一个卷（或成为顶层） */
+function dissolveVolumeAt(index: number): void {
+  const volume = state.chapters[index];
+  if (!volume || volume.level !== 1) return;
+  const next = dissolveVolumeCore(state.chapters, index);
+  if (next === state.chapters) return;
+  const follow = next[index] && next[index].level === 2 ? next[index].id : null;
+  commitChapters(next, follow ?? next[index]?.id ?? state.activeId, '取消分卷');
+  toast(`已取消「${volume.title}」，下面的章节归属上一个卷`);
+}
+
+/** 段落选择条「设为卷名」：选中行成为新卷，重新归组到下一个卷之前的章节 */
+function setVolumeAt(chapterIndex: number, paragraphIndex: number): void {
+  const chapter = state.chapters[chapterIndex];
+  if (!chapter) return;
+  if (paragraphIndex === 0) {
+    toast('这一段是本章标题行；要建卷请选它之后的段落');
+    return;
+  }
+  const volumeId = newId();
+  const remainderId = newId();
+  const next = setVolumeFromParagraphCore(state.chapters, chapterIndex, paragraphIndex, volumeId, remainderId);
+  if (!next) {
+    toast('这段不能设为卷名');
+    return;
+  }
+  commitChapters(next, volumeId, '设为卷名');
+  toast(`已把「${next[chapterIndex + 1].title}」设为卷，直到下一个卷为止的章节都归它管`);
+}
+
+/* ---------------- 批量移动章节 ---------------- */
+
+const MOVE_DIALOG_MAX = 80;
+
+/** 打开「移动到卷…」对话框：列出所有卷 + 顶层，确认后用 core.moveChaptersToVolume 重排 */
+function startMove(indexes: number[]): void {
+  const targets = indexes
+    .filter((index) => index >= 0 && index < state.chapters.length)
+    .map((index) => state.chapters[index])
+    .filter((chapter) => chapter.level === 2);
+  if (!targets.length) {
+    toast('先在章节行上选择要移动的章节（卷本身就是文件夹，不需要移动）');
+    return;
+  }
+  const volumes = state.chapters.filter((chapter) => chapter.level === 1);
+  if (!volumes.length) {
+    toast('这本书还没有卷；先在某章后「新建卷」，再移动章节进去');
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox';
+  overlay.style.zIndex = '300';
+  const card = document.createElement('div');
+  card.className = 'shortcuts-card';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
+  card.setAttribute('aria-label', '移动章节到卷');
+
+  const heading = document.createElement('h2');
+  heading.textContent = `把 ${targets.length} 章移动到…`;
+  const body = document.createElement('div');
+  body.style.cssText = 'margin-top:12px;max-height:min(52vh,420px);overflow:auto;display:grid;gap:6px;';
+  for (const volume of volumes.slice(0, MOVE_DIALOG_MAX)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ghost';
+    button.style.justifyContent = 'space-between';
+    button.textContent = `「${volume.title}」`;
+    button.dataset.volume = volume.id;
+    body.appendChild(button);
+  }
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:16px;';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'ghost';
+  cancel.textContent = '取消';
+  row.append(cancel);
+
+  card.append(heading, body, row);
+  overlay.append(card);
+  document.body.append(overlay);
+  const cleanup = beginModal(card);
+  const settle = (volumeId: string | null): void => {
+    cleanup();
+    overlay.remove();
+    if (volumeId) moveTargetsToVolume(targets.map((chapter) => chapter.id), volumeId);
+  };
+  body.querySelectorAll<HTMLButtonElement>('button[data-volume]').forEach((button) => {
+    button.addEventListener('click', () => settle(button.dataset.volume ?? null));
+  });
+  cancel.addEventListener('click', () => settle(null));
+  body.querySelector<HTMLButtonElement>('button[data-volume]')?.focus();
+}
+
+/** 「移动到其他卷…」单章 / 批量共用入口 */
+function moveTargetsToVolume(ids: string[], volumeId: string | null): void {
+  const targetVolume = state.chapters.find((chapter) => chapter.id === volumeId) ?? null;
+  const next = moveChaptersCore(state.chapters, ids, volumeId);
+  if (next === state.chapters) {
+    toast('这些章节已经在目标卷里，顺序没有变化');
+    return;
+  }
+  commitChapters(next, state.activeId ?? next[0]?.id ?? null, '批量移动章节');
+  toast(`已把 ${ids.length} 章移动到「${targetVolume?.title ?? '顶层'}」`);
+}
 
 function currentReplaceOptions(): ReplaceOptions {
   const scope = els.replaceScope.value;
@@ -987,6 +1573,7 @@ function setReplaceStatus(message: string, error = false): void {
 function resetReplacePanel(): void {
   els.replaceResults.hidden = true;
   els.replaceResults.replaceChildren();
+  setReplaceBusy(false);
   setReplaceStatus('替换前会自动记录一步，可撤销');
 }
 
@@ -1019,56 +1606,131 @@ function renderReplaceMatches(preview: ReplacePreview): void {
   els.replaceResults.hidden = false;
 }
 
-function runReplacePreview(): void {
-  if (!state.chapters.length) {
-    setReplaceStatus('先导入一本书再替换', true);
-    return;
-  }
-  const preview = previewReplace(state.chapters, currentReplaceOptions());
-  if (!preview.ok) {
-    els.replaceResults.hidden = true;
-    setReplaceStatus(preview.error ?? '预览失败', true);
-    return;
-  }
-  if (!preview.total) {
-    els.replaceResults.hidden = true;
-    setReplaceStatus('没有命中，检查一下查找内容或范围', true);
-    return;
-  }
-  setReplaceStatus(`共命中 ${preview.total.toLocaleString('zh-CN')} 处`);
-  renderReplaceMatches(preview);
+function setReplaceBusy(busy: boolean): void {
+  els.replacePreview.disabled = busy;
+  els.replaceApply.disabled = busy;
 }
 
-function runReplaceApply(): void {
+/** 交给 UI 的轻校验：输入时即时提示，不用等点「预览」才发现正则写错了 */
+function validateReplaceInput(): void {
+  if (!state.chapters.length) return;
+  const message = validateReplaceOptions(currentReplaceOptions());
+  if (message) {
+    els.replaceResults.hidden = true;
+    setReplaceStatus(message, true);
+    setReplaceBusy(true);
+    return;
+  }
+  setReplaceBusy(false);
+  const options = currentReplaceOptions();
+  if (options.regex && options.find) setReplaceStatus('正则可用，点「预览命中」查看结果');
+  else if (els.replaceStatus.classList.contains('error')) setReplaceStatus('替换前会自动记录一步，可撤销');
+}
+
+function validateRuleInput(): void {
+  const raw = els.ruleJson.value.trim();
+  if (!raw) {
+    showRuleError(null);
+    els.ruleApply.disabled = false;
+    return;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    showRuleError(`JSON 解析失败：${error instanceof Error ? error.message : '格式不正确'}`);
+    els.ruleApply.disabled = true;
+    return;
+  }
+  const message = validateRuleSpec(parsed);
+  if (message) {
+    showRuleError(message);
+    els.ruleApply.disabled = true;
+    return;
+  }
+  showRuleError(null);
+  els.ruleApply.disabled = false;
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => window.setTimeout(resolve, 0));
+  });
+}
+
+async function runReplacePreview(): Promise<void> {
+  if (replaceBusy) return;
   if (!state.chapters.length) {
     setReplaceStatus('先导入一本书再替换', true);
     return;
   }
-  const options = currentReplaceOptions();
-  const outcome = applyReplace(state.chapters, options);
-  if (!outcome.ok) {
-    setReplaceStatus(outcome.error ?? '替换失败', true);
-    return;
-  }
-  if (!outcome.total) {
-    setReplaceStatus('没有命中，未做修改', true);
-    return;
-  }
-  // 整次替换只入一步历史，撤销可一次还原
-  commitChapters(outcome.chapters, state.activeId ?? outcome.chapters[0]?.id ?? null, '批量替换');
-  setReplaceStatus(`已替换 ${outcome.total.toLocaleString('zh-CN')} 处，可撤销`);
-  toast(`已替换 ${outcome.total.toLocaleString('zh-CN')} 处`, {
-    label: '撤销',
-    onClick: () => {
-      undoChapters();
-    },
-  });
-  // 替换后刷新预览，方便连续处理剩余命中
-  const preview = previewReplace(state.chapters, options);
-  if (preview.ok && preview.total) {
+  // 大书 + 正则回溯时扫描可能要几秒：先给反馈并挡住重复点击
+  replaceBusy = true;
+  setReplaceBusy(true);
+  setReplaceStatus('正在扫描…');
+  await nextFrame();
+  try {
+    const preview = previewReplace(state.chapters, currentReplaceOptions());
+    if (!preview.ok) {
+      els.replaceResults.hidden = true;
+      setReplaceStatus(preview.error ?? '预览失败', true);
+      return;
+    }
+    if (!preview.total) {
+      els.replaceResults.hidden = true;
+      setReplaceStatus('没有命中，检查一下查找内容或范围', true);
+      return;
+    }
+    setReplaceStatus(`共命中 ${preview.total.toLocaleString('zh-CN')} 处`);
     renderReplaceMatches(preview);
-  } else {
-    els.replaceResults.hidden = true;
+  } finally {
+    replaceBusy = false;
+    setReplaceBusy(false);
+  }
+}
+
+let replaceBusy = false;
+
+async function runReplaceApply(): Promise<void> {
+  if (replaceBusy) return;
+  if (!state.chapters.length) {
+    setReplaceStatus('先导入一本书再替换', true);
+    return;
+  }
+  replaceBusy = true;
+  setReplaceBusy(true);
+  setReplaceStatus('正在替换…');
+  await nextFrame();
+  try {
+    const options = currentReplaceOptions();
+    const outcome = applyReplace(state.chapters, options);
+    if (!outcome.ok) {
+      setReplaceStatus(outcome.error ?? '替换失败', true);
+      return;
+    }
+    if (!outcome.total) {
+      setReplaceStatus('没有命中，未做修改', true);
+      return;
+    }
+    // 整次替换只入一步历史，撤销可一次还原
+    commitChapters(outcome.chapters, state.activeId ?? outcome.chapters[0]?.id ?? null, '批量替换');
+    setReplaceStatus(`已替换 ${outcome.total.toLocaleString('zh-CN')} 处，可撤销`);
+    toast(`已替换 ${outcome.total.toLocaleString('zh-CN')} 处`, {
+      label: '撤销',
+      onClick: () => {
+        undoChapters();
+      },
+    });
+    // 替换后刷新预览，方便连续处理剩余命中
+    const preview = previewReplace(state.chapters, options);
+    if (preview.ok && preview.total) {
+      renderReplaceMatches(preview);
+    } else {
+      els.replaceResults.hidden = true;
+    }
+  } finally {
+    replaceBusy = false;
+    setReplaceBusy(false);
   }
 }
 
@@ -1179,6 +1841,7 @@ async function runBatch() {
           },
         },
         [buffer],
+        120_000,
       );
       if (parsed.type !== 'parsed') throw new Error('解析失败');
 
@@ -1190,17 +1853,23 @@ async function runBatch() {
       els.batchStatus.textContent = `正在生成：${item.title}`;
 
       if (state.exportFormat !== 'epub') {
-        const formatted = buildFormattedBook(
-          state.exportFormat,
-          result.chapters,
+        // 非 EPUB 的构建也放进 Worker，避免大书卡住界面
+        const formatted = await call(
           {
-            title: item.title,
-            author: result.authorGuess || '',
-            language: result.language || 'zh-CN',
+            type: 'format',
+            format: state.exportFormat,
+            chapters: result.chapters,
+            meta: {
+              title: item.title,
+              author: result.authorGuess || '',
+              language: result.language || 'zh-CN',
+            },
+            layout: state.layout,
           },
-          state.layout,
+          [],
+          60_000,
         );
-        if (!formatted) throw new Error('没有可以导出的正文');
+        if (formatted.type !== 'formatted') throw new Error('没有可以导出的正文');
         item.data = formatted.data;
         item.ext = formatted.ext;
         item.status = 'done';
@@ -1223,15 +1892,19 @@ async function runBatch() {
         }
       }
 
-      const packed = await call({
-        type: 'pack',
-        chapters: result.chapters,
-        meta: { title: item.title, author: result.authorGuess || '', language: 'zh-CN' },
-        layout: state.layout,
-        cover,
-        font: state.font,
-        version: state.epubVersion,
-      });
+      const packed = await call(
+        {
+          type: 'pack',
+          chapters: result.chapters,
+          meta: { title: item.title, author: result.authorGuess || '', language: 'zh-CN' },
+          layout: state.layout,
+          cover,
+          font: state.font,
+          version: state.epubVersion,
+        },
+        [],
+        60_000,
+      );
       if (packed.type !== 'packed') throw new Error('打包失败');
 
       item.data = packed.data;
@@ -1239,7 +1912,11 @@ async function runBatch() {
       done += 1;
     } catch (error) {
       item.status = 'error';
-      item.message = error instanceof Error ? error.message : '转换失败';
+      item.message = state.batchCancelled
+        ? '已取消'
+        : error instanceof Error
+          ? error.message
+          : '转换失败';
     }
     render.batch();
   }
@@ -1249,18 +1926,52 @@ async function runBatch() {
   els.batchFormat.disabled = false;
   els.batchClose.disabled = false;
   els.batchClose.textContent = '返回';
+  render.batch();
 
+  const failed = state.batchItems.filter((item) => item.status === 'error').length;
   if (state.batchCancelled) {
-    els.batchStatus.textContent = `已取消，完成 ${done} 本`;
-    return;
-  }
-
-  if (done > 0) {
-    els.batchStatus.textContent = `完成 ${done} 本，正在打包…`;
-    await downloadBatchZip();
+    els.batchStatus.textContent = `已取消，完成 ${done} 本${failed ? `，失败 ${failed} 本可重试` : ''}`;
+  } else if (done > 0) {
+    // 不自动下载：给用户选择权（只要 ZIP 或逐本重转），点「下载 ZIP」手动触发
+    els.batchStatus.textContent = `完成 ${done} 本${failed ? `，失败 ${failed} 本` : ''}；点「下载 ZIP」保存，浏览器拦截下载时再点一次`;
+    els.batchDownload.disabled = done === 0;
   } else {
-    els.batchStatus.textContent = '没有成功转换的文件';
+    els.batchStatus.textContent = failed
+      ? `全部失败；每行右侧可查看原因并重试`
+      : '没有成功转换的文件';
+    els.batchDownload.disabled = true;
   }
+  // 批量解析会覆盖 Worker 里当前书的原文，恢复一下保住「重新识别」
+  void restoreWorkerSource();
+}
+
+/** 重试批量转换里所有失败的项 */
+function retryBatch(): void {
+  if (state.batchRunning || state.busy) return;
+  const failed = state.batchItems.filter((item) => item.status === 'error');
+  if (!failed.length) return;
+  for (const item of failed) {
+    item.status = 'waiting';
+    item.message = undefined;
+    item.data = undefined;
+    item.chapters = undefined;
+  }
+  state.batchRunning = true;
+  state.batchCancelled = false;
+  state.busy = true;
+  els.batchFormat.disabled = true;
+  els.batchClose.disabled = false;
+  els.batchClose.textContent = '取消';
+  els.batchDownload.disabled = true;
+  els.batchStatus.textContent = `正在重试 ${failed.length} 本…`;
+  render.batch();
+  void runBatch();
+}
+
+/** 让「取消」立即中断正在处理的一本，而不是等它解析完 */
+function cancelBatch(): void {
+  if (!state.batchRunning) return;
+  workerClient.cancelAll(new Error('已取消'));
 }
 
 function buildBatchZip(): Promise<BatchArchive | null> {
@@ -1288,11 +1999,11 @@ function buildBatchZip(): Promise<BatchArchive | null> {
   batchZipPromise = (async () => {
     try {
       // ZIP 放到 Worker 里生成，主线程只负责保存和下载
-      const res = await call({ type: 'zip', files });
+      const res = await call({ type: 'zip', files }, [], 60_000);
       if (res.type !== 'zipped') throw new Error('打包失败');
       const archive: BatchArchive = {
         blob: new Blob([toArrayBuffer(res.data)], { type: 'application/zip' }),
-        name: `txt2book-${count}本.zip`,
+        name: `BookLoom-${count}本.zip`,
       };
       batchArchive = archive;
       // ZIP 已经缓存成 Blob，EPUB 原始字节可以释放
@@ -1312,7 +2023,26 @@ async function downloadBatchZip() {
   const archive = await buildBatchZip();
   if (!archive) return;
   download(archive.blob, archive.name);
-  els.batchStatus.textContent = `已打包 ${archive.name}（${formatBytes(archive.blob.size)}）`;
+  els.batchStatus.textContent = `已打包 ${archive.name}（${formatBytes(archive.blob.size)}）；逐本下载已并入 ZIP`;
+  render.batch();
+}
+
+/** 单独下载批量转换里某一本的成品（ZIP 打包会复用字节，打包后即释放） */
+function downloadBatchItem(index: number): void {
+  const item = state.batchItems[index];
+  if (!item?.data || item.status !== 'done') return;
+  const ext = item.ext ?? 'epub';
+  const mime =
+    ext === 'epub'
+      ? 'application/epub+zip'
+      : ext === 'docx'
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : ext === 'md'
+          ? 'text/markdown;charset=utf-8'
+          : ext === 'html'
+            ? 'text/html;charset=utf-8'
+            : 'text/plain;charset=utf-8';
+  download(new Blob([toArrayBuffer(item.data)], { type: mime }), `${sanitizeFilename(item.title)}.${ext}`);
 }
 
 function resetBatch() {
@@ -1325,7 +2055,9 @@ function resetBatch() {
   els.batchDownload.disabled = true;
   els.batchClose.disabled = false;
   els.batchClose.textContent = '取消';
-  showLanding();
+  // 还有打开着的书就回工作区，和 closeShelf 行为一致，别把人踹回落地页
+  if (state.parsed) showWorkspace();
+  else showLanding();
 }
 
 /* ---------------- 识别规则 ---------------- */
@@ -1333,7 +2065,6 @@ function resetBatch() {
 function renderRules() {
   els.rulePreset.value = state.rulePreset;
   els.ruleJson.value = state.rules ? JSON.stringify(state.rules, null, 2) : '';
-  els.ruleDetails.open = state.rulePreset === 'custom';
   showRuleError(null);
 }
 
@@ -1344,14 +2075,12 @@ function showRuleError(message: string | null) {
 
 function setRulePreset(id: string) {
   if (id === 'custom') {
-    els.ruleDetails.open = true;
     els.ruleJson.focus();
     return;
   }
   state.rulePreset = id;
   state.rules = id === 'auto' ? null : getPreset(id);
   els.ruleJson.value = state.rules ? JSON.stringify(state.rules, null, 2) : '';
-  els.ruleDetails.open = false;
   showRuleError(null);
   void reparse();
 }
@@ -1385,7 +2114,7 @@ function applyCustomRules() {
 function exportRules() {
   const spec: RuleSpec = state.rules ?? { name: '我的规则', chapter: '', volume: '', drop: [], inlineJunk: [] };
   const blob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' });
-  download(blob, 'txt2book-rules.json');
+  download(blob, 'BookLoom-rules.json');
   toast('规则已导出');
 }
 
@@ -1393,7 +2122,6 @@ async function importRules(file: File) {
   try {
     const text = await file.text();
     els.ruleJson.value = text;
-    els.ruleDetails.open = true;
     applyCustomRules();
   } catch {
     showRuleError('规则文件读取失败');
@@ -1425,7 +2153,7 @@ function enqueueDraftWrite(task: () => Promise<void>): Promise<void> {
 
 function scheduleDraftSave(delay = 1200) {
   if (!state.parsed) return;
-  setSaveBadge('saving', '保存中…', '正在把改动写入本机草稿');
+  // 「保存中…」等到真正落盘前再显示，连续编辑时徽标不会来回闪
   window.clearTimeout(draftTimer);
   if (draftIdle && typeof window.cancelIdleCallback === 'function') {
     window.cancelIdleCallback(draftIdle);
@@ -1441,6 +2169,7 @@ function scheduleDraftSave(delay = 1200) {
     const run = () => {
       draftIdle = 0;
       if (epoch !== draftEpoch) return;
+      setSaveBadge('saving', '保存中…', '正在把改动写入本机草稿');
       void saveDraftNow(epoch);
     };
     if (typeof window.requestIdleCallback === 'function') {
@@ -1449,6 +2178,19 @@ function scheduleDraftSave(delay = 1200) {
       run();
     }
   }, delay);
+}
+
+let persistRequested = false;
+
+/** 保存成功后申请持久化存储，降低浏览器自动清理草稿的概率 */
+function requestPersistentStorage(): void {
+  if (persistRequested) return;
+  persistRequested = true;
+  try {
+    void navigator.storage?.persist?.().catch(() => undefined);
+  } catch {
+    /* 不支持就算了 */
+  }
 }
 
 function saveDraftNow(epoch = draftEpoch): Promise<void> {
@@ -1461,6 +2203,7 @@ function saveDraftNow(epoch = draftEpoch): Promise<void> {
         coverThumb: state.cover ? (state.coverThumb ?? undefined) : null,
       });
       if (epoch !== draftEpoch) return;
+      requestPersistentStorage();
       saveLastBookId(snapshot.bookId ?? null);
       const time = new Date(snapshot.savedAt).toLocaleTimeString('zh-CN', {
         hour: '2-digit',
@@ -1471,8 +2214,9 @@ function saveDraftNow(epoch = draftEpoch): Promise<void> {
       els.draftStatus.dataset.savedAt = String(snapshot.savedAt);
     } catch (error) {
       if (epoch !== draftEpoch) return;
-      setDraftStatus(error instanceof Error ? error.message : '草稿保存失败，可能是存储空间不足', true);
-      setSaveBadge('error', '保存失败', '草稿保存失败，可能是存储空间不足');
+      const reason = error instanceof Error ? error.message : '存储空间可能不足';
+      setDraftStatus(`草稿保存失败（${reason}）。点上方「保存失败」可重试；也可以导出一份备份，或到书架删除不看的书释放空间`, true);
+      setSaveBadge('error', '保存失败', '点这里重试保存');
     }
   });
 }
@@ -1505,12 +2249,12 @@ async function persistSourceWithDraft(file: File, fileEpoch: number): Promise<vo
         }
       } catch {
         if (fileEpoch === loadEpoch) {
-          toast('原始文件没能保存到本地，刷新后需要重新拖入文件');
+          toast('原文件没能保存到本地，刷新后需要重新拖入文件');
         }
       }
     });
   } catch {
-    if (fileEpoch === loadEpoch) toast('原始文件读取失败，刷新后需要重新拖入文件');
+    if (fileEpoch === loadEpoch) toast('原文件读取失败，刷新后需要重新拖入文件');
   }
 }
 
@@ -1554,6 +2298,33 @@ function setSaveBadge(
   els.saveStatus.title = title;
 }
 
+// 关页前如果还有没落盘的改动，请浏览器拦一下；切到后台时立刻强制保存
+function hasPendingDraftSave(): boolean {
+  return draftTimer !== 0 || draftIdle !== 0;
+}
+
+window.addEventListener('beforeunload', (event) => {
+  if (!state.parsed || !hasPendingDraftSave()) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden' || !state.parsed) return;
+  cancelScheduledDraftSave();
+  void saveDraftNow();
+});
+
+// 「保存失败」徽标可以点：立即重试保存
+els.saveStatus.style.cursor = 'pointer';
+els.saveStatus.addEventListener('click', () => {
+  if (!state.parsed) return;
+  if (els.saveStatus.dataset.state === 'error') {
+    setSaveBadge('saving', '保存中…', '正在重试保存');
+    void saveDraftNow();
+  }
+});
+
 function applyLoadedBook(loaded: LoadedBook, sourceReady: boolean): void {
   const { draft, book } = loaded;
   state.bookId = book.id;
@@ -1570,9 +2341,8 @@ function applyLoadedBook(loaded: LoadedBook, sourceReady: boolean): void {
   state.font = loaded.font;
   state.filter = '';
   state.selectedParagraph = null;
-  state.diagDismissed = false;
-  state.diagOpen = true;
   state.idSeed = deriveIdSeed(draft.chapters);
+  state.listWindowStart = 0;
   state.rules = draft.rules ?? null;
   state.rulePreset = draft.rulePreset ?? (draft.rules ? 'custom' : 'auto');
   state.convert = draft.options.convert ?? 'none';
@@ -1598,13 +2368,13 @@ function applyLoadedBook(loaded: LoadedBook, sourceReady: boolean): void {
   renderRules();
   const warnings = [...draft.parse.warnings];
   if (!sourceReady) {
-    warnings.unshift(
-      '草稿关联的原始文件缺失或已失效；要换编码或重新识别，请重新拖入同一个文件。',
-    );
+    warnings.unshift('草稿关联的原文件缺失或已失效；要换编码或重新识别，请重新拖入同一个文件。');
   }
   render.warnings(warnings);
   recomputeDiagnostics();
   render.all();
+  // 草稿可能在目录深处的章节上保存过：把渲染窗口挪过去，让高亮行直接可见
+  ensureActiveRowVisible(state.activeId);
   resetReplacePanel();
 
   const minutes = Math.max(1, Math.round((Date.now() - draft.savedAt) / 60000));
@@ -1619,22 +2389,35 @@ function applyLoadedBook(loaded: LoadedBook, sourceReady: boolean): void {
   scheduleCoverPreview(0);
   saveLastBookId(book.id);
   if (!sourceReady) {
-    toast('草稿关联的原始文件缺失，请重新导入同一个文件；也可以在设置里删除这本书');
+    toast('草稿关联的原文件缺失，请重新导入同一个文件；也可以在设置里删除这本书');
   }
 }
 
 async function openBook(bookId: string, options: { silent?: boolean } = {}): Promise<boolean> {
   if (!bookId) return false;
   const epoch = ++loadEpoch;
+  state.busy = true;
+  els.shelfBtn.disabled = true;
+  // 卡片上给个「打开中…」，大书读草稿 + 回填原文需要一点时间，也挡住连点
+  const card = els.shelfList.querySelector(`.shelf-card[data-id="${CSS.escape(bookId)}"]`);
+  const openButton = card?.querySelector<HTMLButtonElement>('[data-shelf-act="open"]');
+  const originalLabel = openButton?.textContent ?? null;
+  if (openButton) openButton.textContent = '打开中…';
+
   let loaded: LoadedBook | null = null;
   try {
     loaded = await loadBook(bookId);
   } catch (error) {
     toast(error instanceof Error ? error.message : '打开这本书失败，请稍后重试');
     return false;
+  } finally {
+    state.busy = false;
+    els.shelfBtn.disabled = false;
+    if (openButton && originalLabel !== null) openButton.textContent = originalLabel;
   }
   if (!loaded) {
-    if (!options.silent) toast('这本书的草稿数据不完整，可能已被清理');
+    if (!options.silent)
+      toast('这本书的草稿数据不完整，可能已被清理；可在书架删除这张卡片，或重新导入原文件');
     return false;
   }
   if (epoch !== loadEpoch) return false;
@@ -1660,7 +2443,7 @@ async function openBook(bookId: string, options: { silent?: boolean } = {}): Pro
   return true;
 }
 
-async function restoreLastBookOnStart(): Promise<boolean> {
+async function restoreLastBookOnStart(): Promise<string | null> {
   let books: BookRecord[] = [];
   try {
     books = await listBooks();
@@ -1669,13 +2452,14 @@ async function restoreLastBookOnStart(): Promise<boolean> {
       error instanceof Error ? `本地书架不可用：${error.message}` : '本地书架不可用，本次只能临时编辑',
       { label: '重试', onClick: () => window.location.reload() },
     );
-    return false;
+    return null;
   }
-  if (!books.length) return false;
+  if (!books.length) return null;
 
   const remembered = loadLastBookId();
   const target = books.find((book) => book.id === remembered) ?? books[0];
-  return openBook(target.id, { silent: true });
+  const opened = await openBook(target.id, { silent: true });
+  return opened ? target.title : null;
 }
 
 /* ---------------- 书架 ---------------- */
@@ -1765,31 +2549,75 @@ async function renameShelfBook(bookId: string, title: string): Promise<void> {
     toast('书名已更新');
   } catch {
     toast('重命名失败，请稍后重试');
+    // 刷新卡片，把输入框里没保存成功的值还原成实际书名
+    await refreshShelf().catch(() => undefined);
   }
 }
 
-async function deleteShelfBook(bookId: string): Promise<void> {
-  const current = state.bookId === bookId;
-  const fromShelf = !els.shelf.hidden;
+const PURGE_DELAY_MS = 8000;
+const pendingPurges = new Map<string, number>();
+
+/**
+ * 软删除：先把书架记录打上删除标记（草稿和原文原地不动），
+ * 8 秒后才真正清理；期间可从 toast 撤销。
+ */
+async function softDeleteBook(
+  bookId: string,
+  options: { current: boolean; fromShelf: boolean },
+): Promise<void> {
+  let title = '未命名';
   try {
-    if (current) {
+    const books = await listBooks();
+    title = books.find((book) => book.id === bookId)?.title ?? title;
+  } catch {
+    /* 拿不到书名就用默认值 */
+  }
+  try {
+    if (options.current) {
       cancelScheduledDraftSave();
       await draftSaveChain;
     }
-    await deleteBookRecord(bookId);
+    await markBookDeleted(bookId);
     if (loadLastBookId() === bookId) saveLastBookId(null);
-    if (current) resetWorkspaceState();
+    if (options.current) resetWorkspaceState();
     await refreshShelf();
-    toast('已从书架删除');
   } catch {
     toast('删除失败，请稍后重试');
     return;
   }
 
-  if (!current) return;
+  window.clearTimeout(pendingPurges.get(bookId) ?? 0);
+  const purgeTimer = window.setTimeout(() => {
+    pendingPurges.delete(bookId);
+    void deleteBookRecord(bookId).catch(() => undefined);
+  }, PURGE_DELAY_MS);
+  pendingPurges.set(bookId, purgeTimer);
+
+  toast(`已删除《${title}》（含原始文件）`, {
+    label: '撤销',
+    onClick: () => {
+      window.clearTimeout(purgeTimer);
+      pendingPurges.delete(bookId);
+      void restoreBook(bookId).then(async (restored) => {
+        if (!restored) return;
+        if (!els.shelf.hidden) await refreshShelf();
+        toast(`已恢复《${title}》`);
+      });
+    },
+  });
+
+  if (!options.current) return;
+  // 删掉当前书后工作区已清空：还有别的书就回书架挑一本，否则回落地页
   const books = await listBooks().catch(() => []);
   if (!books.length) showLanding();
-  else if (!fromShelf) await showShelf();
+  else await showShelf();
+}
+
+async function deleteShelfBook(bookId: string): Promise<void> {
+  await softDeleteBook(bookId, {
+    current: state.bookId === bookId,
+    fromShelf: !els.shelf.hidden,
+  });
 }
 
 function resetWorkspaceState(): void {
@@ -1806,9 +2634,10 @@ function resetWorkspaceState(): void {
   state.selectedParagraph = null;
   state.diagnostics = [];
   state.audit = auditChapters([]);
-  state.diagDismissed = false;
-  state.diagOpen = true;
   state.idSeed = 0;
+  state.listWindowStart = 0;
+  state.multiSelect = [];
+  state.multiMode = false;
   state.filename = '';
   state.rules = null;
   state.rulePreset = 'auto';
@@ -1838,13 +2667,21 @@ async function clearDraftStorage(): Promise<void> {
 }
 
 async function handleClearDraft() {
+  const bookId = state.bookId;
   try {
-    await clearDraftStorage();
-    setDraftStatus('草稿已清除');
-    toast('已从书架删除这本书');
-    const books = await listBooks().catch(() => []);
-    if (books.length) await showShelf();
-    else showLanding();
+    if (bookId) {
+      await softDeleteBook(bookId, {
+        current: true,
+        fromShelf: els.shelf.hasAttribute('hidden') === false,
+      });
+      setDraftStatus('已从书架删除这本书（可在 toast 里撤销）');
+    } else {
+      await clearDraftStorage();
+      setDraftStatus('草稿已清除');
+      const books = await listBooks().catch(() => []);
+      if (books.length) await showShelf();
+      else showLanding();
+    }
   } catch {
     toast('删除失败，请稍后重试');
   }
@@ -1878,7 +2715,6 @@ const eventDeps: EventDeps = {
   splitAt,
   deleteChapter,
   mergeUp,
-  setChapterLevel,
   undo,
   redo,
   renumberByOrder,
@@ -1905,6 +2741,27 @@ const eventDeps: EventDeps = {
   openShelfBook: (id) => void openShelfBook(id),
   renameShelfBook: (id, title) => void renameShelfBook(id, title),
   deleteShelfBook: (id) => void deleteShelfBook(id),
+  validateReplaceInput,
+  validateRuleInput,
+  retryBatch,
+  cancelBatch,
+  downloadBatchItem,
+  jumpListWindow,
+  setMultiMode,
+  toggleMultiSelect,
+  selectAllVisible,
+  startMove,
+  insertChapter: (index, position) => insertChapterAt(index, position),
+  addVolumeAfter,
+  dissolveVolume: (index) => dissolveVolumeAt(index),
+  setVolumeFromParagraph: (chapterIndex, paragraphIndex) => setVolumeAt(chapterIndex, paragraphIndex),
+  revealChapter,
+  beginParagraphEdit,
+  editParagraphFrom,
+  cancelParagraphEdit,
+  insertParagraph,
+  deleteParagraph,
+  setListPageSize,
 };
 
 /* ---------------- 快捷键 ---------------- */
@@ -1942,14 +2799,12 @@ let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
 
 const hideInstallEntry = (): void => {
   els.installApp.hidden = true;
-  els.installSep.hidden = true;
 };
 
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault();
   deferredInstallPrompt = event as BeforeInstallPromptEvent;
   els.installApp.hidden = false;
-  els.installSep.hidden = false;
 });
 
 els.installApp.addEventListener('click', () => {
@@ -1966,8 +2821,19 @@ initNotice();
 render.applyLayoutToPreview();
 renderRules();
 updateHistoryControls();
-void restoreLastBookOnStart().then((restored) => {
-  if (restored) toast('已恢复上次未导出的草稿');
+
+// 导入失败的「换个文件重试」：还有失败的文件就直接重试它，否则打开文件选择器
+els.importErrorRetry.addEventListener('click', () => {
+  hideImportError();
+  if (lastAttemptFile) void loadFile(lastAttemptFile);
+  else els.fileInput.click();
+});
+
+// 上次会话里软删除但没等到清理就关掉的书，隔了一天还没被清理就补一刀
+void purgeExpiredDeletedBooks().catch(() => undefined);
+
+void restoreLastBookOnStart().then((title) => {
+  if (title) toast(`已恢复上次编辑的《${title}》`);
 });
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

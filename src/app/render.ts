@@ -12,6 +12,15 @@ import type { BookRecord } from '../core/draft';
  */
 export type Renderer = ReturnType<typeof createRenderer>;
 
+/** 目录渲染窗口的默认每页行数（可由分页条调整） */
+export const RENDER_WINDOW = 400;
+
+/** 万字为单位保留一位小数（25.8 万字）；不足一万保持原数字，别出现「0.1 万字」 */
+export function formatCharCount(chars: number): string {
+  if (chars < 10000) return `${chars.toLocaleString('zh-CN')} 字`;
+  return `${(chars / 10000).toFixed(1)} 万字`;
+}
+
 export function createRenderer(els: Els, state: State, closeCover: () => void) {
   function activeChapter(): Chapter | null {
     return state.chapters.find((chapter) => chapter.id === state.activeId) ?? null;
@@ -31,13 +40,10 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
       return;
     }
     const sourceType = state.parsed.sourceType;
-    const encoding =
-      sourceType === 'epub'
-        ? 'EPUB'
-        : sourceType === 'docx'
-          ? 'DOCX'
-          : (state.parsed.encoding || 'utf-8').toUpperCase();
-    els.stats.textContent = `${state.chapters.length} 章 · ${totalChars().toLocaleString('zh-CN')} 字 · ${encoding}`;
+    // 来源是 EPUB / DOCX 时保留标签帮助用户分清；TXT 不再显示编码
+    const source =
+      sourceType === 'epub' ? 'EPUB' : sourceType === 'docx' ? 'DOCX' : 'TXT';
+    els.stats.textContent = `${state.chapters.length} 章 · ${formatCharCount(totalChars())} · ${source}`;
   }
 
   function renderWarnings(warnings: string[]) {
@@ -58,87 +64,115 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
     return /^(?:内容简介|作品简介|简介|序章|序言|序|楔子|引子|前言|引言)$/.test(title.trim());
   }
 
+  /** 目录太长时只渲染可见的头部，避免每次编辑都重建几万 DOM 节点 */
+
+  function buildRow(chapter: Chapter, index: number, chapterNo: number, unnumbered: boolean): HTMLElement {
+    const row = document.createElement('div');
+    row.className =
+      'chapter-row' +
+      (chapter.level === 1 ? ' volume' : '') +
+      (chapter.id === state.activeId ? ' active' : '');
+    row.dataset.id = chapter.id;
+    row.dataset.index = String(index);
+    row.setAttribute('role', 'listitem');
+
+    const idx = document.createElement('span');
+    idx.className = 'idx';
+    idx.textContent = chapter.level === 1 ? '卷' : unnumbered ? '序' : String(chapterNo);
+
+    const input = document.createElement('input');
+    input.className = 'ch-title';
+    input.value = chapter.title;
+    input.readOnly = true;
+    input.title = '点击选中章节，双击标题或用右键菜单改名\n右键 / 长按整行打开更多操作';
+    input.setAttribute('aria-label', `章节标题：${chapter.title}`);
+    input.spellcheck = false;
+
+    // 行内只保留「更多」入口：重命名 / 插入 / 合并 / 删除 / 移动都在右键同款菜单里
+    const menuButton = document.createElement('button');
+    menuButton.type = 'button';
+    menuButton.className = 'row-menu-btn';
+    menuButton.dataset.menu = 'row';
+    menuButton.setAttribute('aria-label', `更多操作：${chapter.title}`);
+    menuButton.setAttribute('aria-haspopup', 'menu');
+    menuButton.setAttribute('aria-expanded', 'false');
+    menuButton.textContent = '⋯';
+
+    row.append(idx, input, menuButton);
+    // 批量移动：多选模式下选中的行给选中样式
+    if (state.multiSelect.includes(chapter.id)) row.classList.add('multi-selected');
+    return row;
+  }
+
   function renderList() {
     const fragment = document.createDocumentFragment();
     const query = state.filter.trim().toLowerCase();
     const numeric = /^\d+$/.test(query) ? Number(query) : null;
+    const total = state.chapters.length;
+    // 批量移动模式：整表加 is-multi，行内快捷按钮隐藏、点击变成勾选
+    els.chapterList.classList.toggle('is-multi', state.multiSelect.length > 0 || state.multiMode);
+    // 多选时隐藏搜索框状态不影响……窗位逻辑照常但搜索态关闭多选由 main 层保证
+    els.multiBar.hidden = !state.multiSelect.length && !state.multiMode;
+    els.multiCount.textContent = String(state.multiSelect.length);
+    els.multiMove.disabled = state.multiSelect.length === 0;
+    els.multiToggle.textContent = state.multiMode ? '退出多选' : '多选';
+
+    // 无搜索时按页渲染；搜索时从 0 起（命中通常远少于一页）
+    const pageSize = state.listPageSize;
+    let start = 0;
+    let windowed = false;
+    // 最后一页从 (total-1)/pageSize 对齐：1284 章 / 400 也一定有第 4 页（只装 284 章）
+    const lastStart = Math.floor((total - 1) / pageSize) * pageSize;
+    if (!query && total > pageSize) {
+      windowed = true;
+      start = Math.max(0, Math.min(state.listWindowStart, lastStart));
+      state.listWindowStart = start;
+    }
+
     let chapterNo = 0;
+    // 补算第 start 章之前的章号，保证窗口内编号连续
+    for (let i = 0; i < start; i += 1) {
+      const chapter = state.chapters[i];
+      if (chapter.level === 2 && !isFrontTitle(chapter.title)) chapterNo += 1;
+    }
     let shown = 0;
 
-    state.chapters.forEach((chapter, index) => {
+    for (let index = start; index < total; index += 1) {
+      const chapter = state.chapters[index];
       const unnumbered = chapter.level === 2 && isFrontTitle(chapter.title);
       if (chapter.level === 2 && !unnumbered) chapterNo += 1;
       if (query) {
         const inTitle = chapter.title.toLowerCase().includes(query);
         const byNumber = numeric !== null && chapter.level === 2 && chapterNo === numeric;
-        if (!inTitle && !byNumber) return;
+        if (!inTitle && !byNumber) continue;
       }
       shown += 1;
-      const row = document.createElement('div');
-      row.className =
-        'chapter-row' +
-        (chapter.level === 1 ? ' volume' : '') +
-        (chapter.id === state.activeId ? ' active' : '');
-      row.dataset.id = chapter.id;
-      row.dataset.index = String(index);
-      row.setAttribute('role', 'listitem');
+      if (shown <= pageSize) {
+        const row = buildRow(chapter, index, chapterNo, unnumbered);
+        // 命中搜索的行给标题一个淡色底，肉眼可见「为什么是它」
+        if (query && chapter.title.toLowerCase().includes(query)) row.classList.add('hit');
+        fragment.appendChild(row);
+      }
+      if (shown === pageSize) break;
+    }
 
-      const idx = document.createElement('span');
-      idx.className = 'idx';
-      idx.textContent = chapter.level === 1 ? '卷' : unnumbered ? '序' : String(chapterNo);
+    // 常规分页：页码 / 本页章数 / 每页章数 / 上下页
+    const page = Math.floor(start / pageSize) + 1;
+    const pages = Math.ceil(total / pageSize);
+    els.listPager.hidden = !windowed;
+    els.pagerPrev.disabled = page <= 1;
+    els.pagerNext.disabled = page >= pages;
+    els.pagerInfo.textContent = windowed ? `第 ${page} / ${pages} 页` : '';
+    if (els.pagerSize.value !== String(pageSize)) {
+      els.pagerSize.value = String(pageSize);
+    }
 
-      const input = document.createElement('input');
-      input.className = 'ch-title';
-      input.value = chapter.title;
-      input.readOnly = true;
-      input.title = '点击选中章节，再点一次改标题';
-      input.setAttribute('aria-label', `章节标题：${chapter.title}`);
-      input.spellcheck = false;
-
-      const actions = document.createElement('div');
-      actions.className = 'row-actions';
-
-      const rename = document.createElement('button');
-      rename.type = 'button';
-      rename.dataset.act = 'rename';
-      rename.title = '重命名标题';
-      rename.textContent = '✎';
-
-      const level = document.createElement('button');
-      level.type = 'button';
-      level.dataset.act = 'level';
-      level.title = chapter.level === 1 ? '降为普通章节' : '升为卷';
-      level.textContent = chapter.level === 1 ? '降章' : '升卷';
-
-      const merge = document.createElement('button');
-      merge.type = 'button';
-      merge.dataset.act = 'merge';
-      merge.disabled = index === 0;
-      merge.title = index === 0 ? '已经是第一章，不能并入上一章' : '并入上一章';
-      merge.textContent = '↑';
-
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.dataset.act = 'delete';
-      remove.disabled = state.chapters.length <= 1;
-      remove.title = state.chapters.length <= 1 ? '至少保留一章' : '删除本章';
-      remove.className = 'danger';
-      remove.textContent = '×';
-
-      actions.append(rename, level, merge, remove);
-
-      const menuButton = document.createElement('button');
-      menuButton.type = 'button';
-      menuButton.className = 'row-menu-btn';
-      menuButton.dataset.menu = 'row';
-      menuButton.setAttribute('aria-label', `更多操作：${chapter.title}`);
-      menuButton.setAttribute('aria-haspopup', 'menu');
-      menuButton.setAttribute('aria-expanded', 'false');
-      menuButton.textContent = '⋯';
-
-      row.append(idx, input, actions, menuButton);
-      fragment.appendChild(row);
-    });
+    if (!windowed && shown >= pageSize && start + shown < total) {
+      const more = document.createElement('p');
+      more.className = 'list-empty';
+      more.textContent = `命中过多，只显示前 ${pageSize} 条；输入更精确的关键词可以缩小范围`;
+      fragment.appendChild(more);
+    }
 
     if (els.searchCount) {
       if (query) {
@@ -178,14 +212,15 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
     const chapter = activeChapter();
     els.preview.replaceChildren();
     applyLayoutToPreview();
-    updateChapterNav();
+
+    // 中栏顶栏直接显示章节标题
+    els.previewTitle.textContent = chapter ? chapter.title || '未命名' : '预览';
 
     if (!chapter) {
       const p = document.createElement('p');
       p.className = 'empty';
       p.textContent = '选择左侧章节开始预览';
       els.preview.appendChild(p);
-      els.previewMeta.textContent = '';
       els.previewScroll.scrollTop = 0;
       updateSelectionBar();
       return;
@@ -195,7 +230,10 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
     heading.textContent = chapter.title;
     els.preview.appendChild(heading);
 
-    if (!chapter.paragraphs.length) {
+    const editing = state.editingParagraph;
+    const editingHere = editing?.chapterId === chapter.id ? editing.paragraphIndex : -1;
+
+    if (!chapter.paragraphs.length && editingHere < 0) {
       const p = document.createElement('p');
       p.className = 'empty';
       p.textContent = chapter.level === 1 ? '（卷标题，正文在下一章）' : '（本章没有正文）';
@@ -206,20 +244,92 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
       let budget = MAX_PREVIEW_CHARS;
       let truncated = false;
 
+      const buildEditor = (index: number, original: string) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'p-editor';
+        wrap.dataset.chapterIndex = String(state.chapters.indexOf(chapter));
+        wrap.dataset.index = String(index);
+        const ta = document.createElement('textarea');
+        ta.className = 'p-editor-input';
+        ta.dataset.index = String(index);
+        ta.dataset.original = original;
+        ta.value = original;
+        ta.setAttribute('aria-label', `编辑第 ${index + 1} 段`);
+        const actions = document.createElement('div');
+        actions.className = 'p-editor-actions';
+        const hint = document.createElement('p');
+        hint.className = 'hint';
+        hint.textContent = 'Ctrl+Enter 保存 · Esc 取消；点保存或点到别处也能保存';
+        actions.append(hint);
+        wrap.append(ta, actions);
+        return { wrap, ta };
+      };
+
+      const buildRow = (index: number, text: string, take: number) => {
+        const p = document.createElement('p');
+        p.dataset.index = String(index);
+        p.title = '点击选中这一段，可从这里分章';
+        p.textContent = take < text.length ? `${text.slice(0, take)}…` : text;
+        if (take < text.length) truncated = true;
+
+        const actions = document.createElement('span');
+        actions.className = 'p-actions';
+        actions.setAttribute('aria-hidden', 'false');
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.dataset.pact = 'edit';
+        edit.title = '编辑这一段';
+        edit.textContent = '✎';
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.dataset.pact = 'add';
+        add.title = '在这一段后面新增段落';
+        add.textContent = '＋';
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.dataset.pact = 'del';
+        del.title = '删除这一段（再点一次确认）';
+        del.textContent = '×';
+        actions.append(edit, add, del);
+        p.append(actions);
+        return p;
+      };
+
+      // 正在编辑的段落：先渲染编辑器占位
+      let editorDone = false;
       for (let index = 0; index < chapter.paragraphs.length; index += 1) {
         if (budget <= 0) {
           truncated = true;
           break;
         }
         const text = chapter.paragraphs[index];
+        if (index === editingHere) {
+          const { wrap, ta } = buildEditor(index, text);
+          els.preview.appendChild(wrap);
+          requestAnimationFrame(() => ta.focus());
+          editorDone = true;
+          continue;
+        }
         const take = Math.min(text.length, budget, MAX_PARAGRAPH_PREVIEW);
-        const p = document.createElement('p');
-        p.dataset.index = String(index);
-        p.title = '点击选中这一段，可从这里分章';
-        p.textContent = take < text.length ? `${text.slice(0, take)}…` : text;
+        els.preview.appendChild(buildRow(index, text, take));
         if (take < text.length) truncated = true;
         budget -= take;
-        els.preview.appendChild(p);
+      }
+      // 编辑的是任意下标（含空章的新段）：空章没有循环也要出编辑器
+      if (editingHere >= 0 && !editorDone) {
+        const { wrap, ta } = buildEditor(editingHere, chapter.paragraphs[editingHere] ?? '');
+        els.preview.appendChild(wrap);
+        requestAnimationFrame(() => ta.focus());
+      }
+
+      // 章尾加一个「新增段落」入口，即使不在编辑态也能加段
+      if (!truncated) {
+        const addRow = document.createElement('button');
+        addRow.type = 'button';
+        addRow.className = 'p-add-end';
+        addRow.dataset.pact = 'add-end';
+        addRow.textContent = '＋ 新增段落';
+        els.preview.appendChild(addRow);
       }
 
       if (truncated) {
@@ -230,19 +340,8 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
       }
     }
 
-    const chars = chapter.paragraphs.reduce((n, p) => n + p.length, 0);
-    els.previewMeta.textContent = `${chapter.paragraphs.length} 段 · ${chars.toLocaleString('zh-CN')} 字 · 点段落可拆分`;
     els.previewScroll.scrollTop = 0;
     updateSelectionBar();
-  }
-
-  function updateChapterNav() {
-    const index = state.chapters.findIndex((chapter) => chapter.id === state.activeId);
-    const total = state.chapters.length;
-    els.prevChapter.disabled = index <= 0;
-    els.nextChapter.disabled = index < 0 || index >= total - 1;
-    els.chapterPosition.textContent = index >= 0 && total ? `${index + 1} / ${total}` : '—';
-    els.chapterPosition.title = '当前章节在目录中的位置';
   }
 
   function updateSelectionBar() {
@@ -264,22 +363,48 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
       titleButton.title =
         index === 0 ? '用这一段替换本章标题' : '把这一段作为新章节标题，正文从下一段开始';
     }
+    const volumeButton = els.selectionBar.querySelector<HTMLButtonElement>('[data-act="volume"]');
+    if (volumeButton) {
+      // 第一段是章标题本身，不适合成为卷名；卷名通常出现在正文中间
+      volumeButton.disabled = index === 0;
+      volumeButton.title =
+        index === 0
+          ? '这一段就是本章标题；把本章后面像卷名的段落选中后再设为卷'
+          : '把这一段设为新卷（文件夹），本卷到下一个卷之前的章节都会归进它';
+    }
   }
 
   function renderDiagnostics() {
     const candidates = state.diagnostics;
     const report = state.audit;
     const total = candidates.length + report.total;
-    const visible = total > 0 && !state.diagDismissed;
-    els.diagnostics.hidden = !visible;
-    if (!visible) return;
 
-    const parts: string[] = [];
-    if (candidates.length) parts.push(`疑似漏章 ${candidates.length}`);
-    if (report.total) parts.push(`结构问题 ${report.total}`);
-    els.diagSummary.textContent = `全书体检：${parts.join(' · ')}`;
-    els.diagList.hidden = !state.diagOpen;
-    els.diagCaret.textContent = state.diagOpen ? '收起' : '展开';
+    // 章节栏按钮徽标：有问题→数量（疑似漏章红色，其余黄色）；无问题→绿色对勾
+    if (!total) {
+      els.diagBadge.textContent = '✓';
+      els.diagBadge.dataset.state = 'ok';
+      els.diagBtn.setAttribute('aria-label', '全书体检：未发现问题');
+    } else {
+      els.diagBadge.textContent = String(total);
+      els.diagBadge.dataset.state = candidates.length ? 'danger' : 'warn';
+      els.diagBtn.setAttribute(
+        'aria-label',
+        `全书体检：${total} 个问题，点击查看`,
+      );
+    }
+
+    const visible = total > 0;
+    els.diagnostics.hidden = !visible;
+    if (!visible) {
+      els.diagSummary.textContent = '现在没有发现疑似漏章或结构问题。';
+      els.diagList.replaceChildren();
+      return;
+    }
+
+    const summaryParts: string[] = [];
+    if (candidates.length) summaryParts.push(`疑似漏章 ${candidates.length} 处`);
+    if (report.total) summaryParts.push(`结构问题 ${report.total} 处`);
+    els.diagSummary.textContent = summaryParts.join(' · ');
 
     const max = 30;
     els.diagList.replaceChildren();
@@ -423,11 +548,13 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
     els.metaPublisher.value = state.meta.publisher ?? '';
     els.metaTags.value = (state.meta.tags ?? []).join('、');
     els.metaPublished.value = state.meta.publishedAt ?? '';
+    els.metaStatus.value = state.meta.status ?? '';
     const sourceType = state.parsed?.sourceType;
     const fromEpub = sourceType === 'epub';
     const fromDocx = sourceType === 'docx';
     const fromStructured = fromEpub || fromDocx;
     els.export.disabled = state.busy || !state.chapters.length;
+    els.railExport.disabled = state.busy || !state.chapters.length;
     els.reparse.disabled = state.busy || !state.parsed || !state.sourceReady || fromStructured;
     els.reparse.title = fromEpub
       ? 'EPUB 已经拆好章节，不需要重新识别'
@@ -449,6 +576,8 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
     els.epubVersion.disabled = state.exportFormat !== 'epub';
     els.epubVersionField.hidden = state.exportFormat !== 'epub';
     els.export.textContent = EXPORT_LABEL[state.exportFormat];
+    // 右栏按钮是「打开导出弹窗」的入口，固定叫「导出」，格式在弹窗里选
+    els.railExport.textContent = '导出';
     els.lineHeight.value = String(state.layout.lineHeight);
     els.lineHeightVal.textContent = state.layout.lineHeight.toFixed(2);
     els.paraGap.value = String(state.layout.paragraphSpacing);
@@ -516,9 +645,12 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
     els.batchSummary.textContent = `共 ${items.length} 本 · 完成 ${done}${failed ? ` · 失败 ${failed}` : ''}`;
 
     const fragment = document.createDocumentFragment();
+    let itemIndex = 0;
     for (const item of items) {
       const row = document.createElement('li');
       row.className = 'batch-item';
+      row.dataset.index = String(itemIndex++);
+      if (item.status === 'error') row.classList.add('failed');
 
       const title = document.createElement('span');
       title.className = 'batch-title';
@@ -533,9 +665,33 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
       status.className =
         'batch-state' + (item.status === 'done' ? ' done' : item.status === 'error' ? ' error' : '');
       status.textContent = batchStateText(item);
-      status.title = item.message ?? '';
 
       row.append(title, meta, status);
+
+      if (item.status === 'error') {
+        // 失败原因直接展示在行内，触屏也能看到；并给一次重试入口
+        const reason = document.createElement('span');
+        reason.className = 'batch-meta batch-err';
+        reason.textContent = item.message ?? '转换失败';
+        row.appendChild(reason);
+
+        if (!state.batchRunning) {
+          const retry = document.createElement('button');
+          retry.type = 'button';
+          retry.className = 'ghost small';
+          retry.dataset.batchAct = 'retry';
+          retry.textContent = '重试';
+          row.appendChild(retry);
+        }
+      } else if (item.status === 'done' && item.data) {
+        // ZIP 还没打包前允许逐本单独下载
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'ghost small';
+        save.dataset.batchAct = 'save';
+        save.textContent = '下载';
+        row.appendChild(save);
+      }
       fragment.appendChild(row);
     }
     els.batchList.replaceChildren(fragment);
@@ -589,7 +745,7 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
         hour: '2-digit',
         minute: '2-digit',
       });
-      meta.textContent = `${book.author || '佚名'} · ${book.chapterCount} 章 · ${book.words.toLocaleString('zh-CN')} 字 · ${updated}`;
+      meta.textContent = `${book.author || '佚名'} · ${book.chapterCount} 章 · ${formatCharCount(book.words ?? 0)} · ${updated}`;
 
       const actions = document.createElement('div');
       actions.className = 'shelf-card-actions';
@@ -637,7 +793,6 @@ export function createRenderer(els: Els, state: State, closeCover: () => void) {
     list: renderList,
     applyLayoutToPreview,
     preview: renderPreview,
-    updateChapterNav,
     updateSelectionBar,
     diagnostics: renderDiagnostics,
     cover: renderCover,

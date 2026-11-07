@@ -1,4 +1,4 @@
-# txt2book
+# BookLoom
 
 > txt2book 是一个纯浏览器本地运行的电子书转换与排版工具：把 TXT 小说转成 EPUB，也支持 EPUB / DOCX 互转、自动分章、人工校对、封面生成与多格式导出，文件不上传。
 
@@ -15,13 +15,12 @@ txt2book 面向中文网络小说读者和电子书制作者。打开网页即�
 - 校对：改标题、合并、删除、升降级、从任意段落分章、疑似漏章诊断、全书体检（缺号 / 重复 / 空章 / 广告残留）、批量替换、繁简转换
 - 排版：行高、段距、首行缩进、字体、对齐、章号独立成行、附加 CSS、嵌入字体、封面编辑器
 - 隐私：文件不上传，无统计脚本、无第三方请求；草稿只存本机 IndexedDB
-- 授权：MIT，仓库 https://github.com/xiaoxura/txt2book
+- 授权：MIT，仓库 https://github.com/xiaoxura/BookLoomWeb
 
 ## 页面
 
 - [首页](https://txt2book.xiaoxura.com/)：在线转换入口、三步使用说明、设备导入指南与常见问题
-- [更新日志](https://txt2book.xiaoxura.com/changelog.html)：v0.0.1 到 v0.2.0 的功能变更
-- [源码仓库](https://github.com/xiaoxura/txt2book)：MIT 开源，可自行部署
+- [源码仓库](https://github.com/xiaoxura/BookLoomWeb)：MIT 开源，可自行部署
 
 ## 常见问题
 

@@ -31,6 +31,16 @@ describe('章号解析', () => {
     expect(parseChapterNumber('第9章讲的是……')).not.toBeNull();
   });
 
+  it('解析区间章号并给出区间末端', () => {
+    const parsed = parseChapterNumber('第1045~1046章 现代番');
+    expect(parsed?.value).toBe(1045);
+    expect(parsed?.end).toBe(1046);
+    expect(parseChapterNumber('第1045～1046章 现代番')?.end).toBe(1046);
+    expect(parseChapterNumber('第3至5节 摘录')?.end).toBe(5);
+    expect(parseChapterNumber('第3章 风起')?.end).toBeUndefined();
+    expect(parseChapterNumber('第一章（下）')?.end).toBeUndefined();
+  });
+
   it('中文数字与阿拉伯数字归一化', () => {
     expect(parseChineseNumber('十')).toBe(10);
     expect(parseChineseNumber('十二')).toBe(12);
@@ -76,6 +86,15 @@ describe('全书体检', () => {
     ]);
     expect(report.counts['missing-number']).toBe(0);
     expect(report.counts['duplicate-number']).toBe(0);
+  });
+
+  it('区间章号覆盖其区间，不报缺号', () => {
+    const report = auditChapters([
+      chapter('a', '第1044章 现代番', 2),
+      chapter('b', '第1045~1046章 现代番，一百三十', 2),
+      chapter('c', '第1047章 现代番', 2),
+    ]);
+    expect(report.counts['missing-number']).toBe(0);
   });
 
   it('发现章号重复与标题重复', () => {

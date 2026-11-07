@@ -4,13 +4,16 @@ import { buildParagraphs, type ParagraphOptions } from './text';
 
 const CN_NUM = '零〇一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟';
 const PREFIX = '(?:正文[\\s·:：\\-—]*)?';
+/** 章号数字；允许合并章节的区间写法：第1045~1046章 / 第3至5话 */
+const NUM = `[${CN_NUM}\\d]{1,8}`;
+const NUM_SEQ = `${NUM}(?:\\s*[~～\\-—－至到]\\s*${NUM})?`;
 
 const VOLUME_RE = new RegExp(
-  `^${PREFIX}第\\s*[${CN_NUM}\\d]{1,8}\\s*[卷部篇集](?:\\s*[、.．:：·\\-—]\\s*)?[^。]{0,30}$`,
+  `^${PREFIX}第\\s*${NUM_SEQ}\\s*[卷部篇集](?:\\s*[、.．:：·\\-—]\\s*)?[^。]{0,30}$`,
 );
 const VOLUME_ALT_RE = new RegExp(`^[卷部篇集]\\s*[${CN_NUM}\\d]{1,6}(?:\\s*[、.．:：·\\-—]\\s*)?[^。]{0,24}$`);
 const CHAPTER_RE = new RegExp(
-  `^${PREFIX}第\\s*[${CN_NUM}\\d]{1,8}\\s*[章节回话](?:\\s*[、.．:：·\\-—]\\s*)?[^。]{0,30}$`,
+  `^${PREFIX}第\\s*${NUM_SEQ}\\s*[章节回话](?:\\s*[、.．:：·\\-—]\\s*)?[^。]{0,30}$`,
 );
 const SPECIAL_RE =
   /^(?:序章|序言|序|楔子|引子|前言|引言|后记|尾声|终章|最终章|完本感言|大结局|番外(?:篇)?(?:[\s:：·、.．\-—]?\s*[0-9一二三四五六七八九十百千]{0,6})?|附录|作者的话|内容简介)(?:[\s:：·、.．\-—].{0,30})?$/;
@@ -26,7 +29,7 @@ const HEADING_EXCLUDE_RE = new RegExp(
 );
 
 /** 章节标题的"核心"部分，允许前面粘着站点水印 */
-const HEAD_CORE = new RegExp(`第\\s*[${CN_NUM}\\d]{1,8}\\s*[章节回卷部篇集]`);
+const HEAD_CORE = new RegExp(`第\\s*${NUM_SEQ}\\s*[章节回卷部篇集]`);
 const INLINE_JUNK =
   /(内容还在处理中|正在手打中|正在更新中|本章未完|请稍后|请稍候|加载中|手机用户|手机阅读|百度搜索|天才一秒记住|记住本站|求月票|求推荐票|更新最快|无弹窗|笔趣阁|最新章节|电子书|txt)/i;
 
@@ -43,7 +46,7 @@ export interface Heading {
 const MARKER_GAP = ' ';
 /** 「第1章我的天呐」→「第1章 我的天呐」；后面已经是空格或分隔标点就不动 */
 const MARKER_GAP_RE = new RegExp(
-  `(第\\s*[${CN_NUM}\\d]{1,8}\\s*[章节回话卷部篇集])(?=[^\\s、.．:：·\\-—（(【\\[《「『〈])`,
+  `(第\\s*${NUM_SEQ}\\s*[章节回话卷部篇集])(?=[^\\s、.．:：·\\-—（(【\\[《「『〈])`,
 );
 
 /** 章号和标题之间没空格时补一个，导出后的目录更好看 */
@@ -69,7 +72,10 @@ function classify(
   // 用户规则优先，内置规则命中前先排掉「第X部分」这类正文词
   if (HEADING_EXCLUDE_RE.test(line)) return null;
   if (line.length > 42) return null;
-  if (/[。！？!?]$/.test(line)) return null;
+  // 句号 / 省略号 / 分号结尾一律不是标题
+  if (/[。…；;]$/.test(line)) return null;
+  // 问叹号结尾的短行可以当标题（如「第3章 你敢？」）；偏长时按正文对待
+  if (/[！？?!]$/.test(line) && line.length > 24) return null;
   if (line.length > 26 && /[，,；;]/.test(line)) return null;
 
   if (VOLUME_RE.test(line) || VOLUME_ALT_RE.test(line)) {
@@ -286,6 +292,60 @@ export function countChars(text: string): number {
 export function guessAuthor(sample: string): string {
   const match = sample.match(/(?:作\s*者|著\s*者)\s*[:：]\s*([^\s/|,，、』」》<>]{1,20})/);
   return match ? match[1].trim() : '';
+}
+
+export interface IntroMeta {
+  description?: string;
+  /** 连载状态（已完结 / 连载中 / 完结 等） */
+  status?: string;
+}
+
+export interface IntroExtract {
+  meta: IntroMeta;
+  /** 提取后剩余的章节（简介卷首章已移除） */
+  remaining: Chapter[];
+}
+
+const INTRO_TITLE_RE = /(?:内容简介|作品简介|图书简介|简介|文案)/;
+/** 卷首标记：『状态:已完结』，也兼容【状态：…】等括号变体 */
+const STATUS_RE = /[『【\[(]?状态\s*[:：]\s*([^\s『』】\])]{1,12})/;
+const DESC_RE = /[『【\[(]?(?:内容简介|作品简介|图书简介|简介|文案)\s*[:：]/;
+
+/**
+ * 站点常见的卷首信息章：标题是「内容简介 / 简介 / 文案」，
+ * 正文以『状态:xx』『内容简介:xxx』这样的标记行呈现。
+ * 能同时认出简介和连载状态时，识别内容填进书籍信息，整个章节不再显示。
+ */
+export function extractIntroMeta(chapters: Chapter[]): IntroExtract {
+  for (let index = 0; index < chapters.length; index += 1) {
+    const chapter = chapters[index];
+    const isIntro = chapter.frontMatter === true || INTRO_TITLE_RE.test(chapter.title);
+    if (!isIntro) continue;
+    const flat = chapter.paragraphs.join(' ').replace(/\s+/g, ' ');
+    const descMatch = DESC_RE.exec(flat);
+    if (!descMatch) continue;
+
+    // 简介从键后面取，到下一个『状态:』标记或文本末尾
+    let description = flat.slice(descMatch.index + descMatch[0].length);
+    const statusIndex = description.search(STATUS_RE);
+    if (statusIndex >= 0) description = description.slice(0, statusIndex);
+    description = description
+      .replace(/[『』【】]/g, '')
+      .trim()
+      .slice(0, 4000);
+
+    const meta: IntroMeta = {};
+    const statusMatch = STATUS_RE.exec(flat);
+    if (statusMatch) meta.status = statusMatch[1].trim();
+    if (description.length >= 10) meta.description = description;
+    if (!meta.description && !meta.status) continue;
+
+    const remaining = chapters
+      .slice(0, index)
+      .concat(chapters.slice(index + 1));
+    return { meta, remaining };
+  }
+  return { meta: {}, remaining: chapters };
 }
 
 export interface HeadingCandidate {

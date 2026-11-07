@@ -1,7 +1,7 @@
 {
-  "name": "txt2book",
+  "name": "BookLoom",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "纯前端 TXT / EPUB / DOCX 电子书转换工具，文件不出浏览器",
   "scripts": {

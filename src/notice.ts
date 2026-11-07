@@ -1,7 +1,9 @@
 /**
  * 站内公告：右上角铃铛 + 弹窗。
- * 内容集中在这里，index.html 和 changelog.html 共用同一份，避免两个页面各改各的。
+ * 文案集中在这里维护，避免散落在 HTML 里。
  */
+
+import { beginModal } from './app/modal';
 
 const NOTICE_KEY = 'txt2book.noticeSeen';
 
@@ -45,15 +47,9 @@ const NOTICE = {
 let initialized = false;
 let trigger: HTMLElement | null = null;
 
-/** 用户已经开始使用工具时，首访提示条不必再出现 */
-export function dismissNotice(): void {
-  try {
-    localStorage.setItem(NOTICE_KEY, NOTICE.id);
-  } catch {
-    /* 隐私模式下写入失败就让它下次再出现 */
-  }
+/** 收起并标记已读：用户点开过公告（铃铛 / 使用须知 / 开始使用）时由 initNotice 内部调用 */
+export function hideNoticeBanner(): void {
   document.querySelector<HTMLElement>('#notice-banner')?.setAttribute('hidden', '');
-  document.querySelector<HTMLElement>('#notice-btn')?.classList.remove('has-dot');
 }
 
 function make<K extends keyof HTMLElementTagNameMap>(
@@ -154,12 +150,15 @@ export function initNotice(): void {
     if (banner) banner.hidden = true;
   };
 
+  let modalCleanup: (() => void) | null = null;
+
   const open = (from: HTMLElement | null): void => {
     if (!overlay.hidden) return;
     trigger = from;
     overlay.hidden = false;
     hideBanner();
     document.body.classList.add('notice-open');
+    modalCleanup = beginModal(card);
     markSeen();
     // 焦点给弹窗本身而不是按钮，避免一打开就出现一圈焦点环
     card.focus();
@@ -169,6 +168,8 @@ export function initNotice(): void {
     if (overlay.hidden) return;
     overlay.hidden = true;
     document.body.classList.remove('notice-open');
+    modalCleanup?.();
+    modalCleanup = null;
     const target = trigger;
     trigger = null;
     // 手动打开时把焦点还给铃铛；自动弹出时不清空，避免页面上莫名多一圈焦点环

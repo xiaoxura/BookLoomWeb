@@ -62,7 +62,10 @@ const AUDIT_MAX_ISSUES_PER_KIND = 20;
 const AUDIT_MAX_PARAGRAPH_INDEX = 20;
 
 const CN_NUM_CHARS = '零〇一二三四五六七八九十百千万两壹贰叁肆伍陆柒捌玖拾佰仟';
-const NUMBERED_TITLE_RE = new RegExp(`^(\\s*第\\s*)([${CN_NUM_CHARS}\\d]{1,8})(\\s*[章节回话])`);
+const NUM = `[${CN_NUM_CHARS}\\d]{1,8}`;
+/** 合并章节的区间写法：第1045~1046章（分隔符含 ~ ～ - — － 至 到） */
+const NUM_RANGE = `(?:\\s*[~～\\-—－至到]\\s*${NUM})?`;
+const NUMBERED_TITLE_RE = new RegExp(`^(\\s*第\\s*)(${NUM})(${NUM_RANGE}\\s*[章节回话])`);
 const CN_DIGITS: Record<string, number> = {
   零: 0,
   〇: 0,
@@ -101,6 +104,8 @@ export interface ParsedChapterNumber {
   value: number;
   style: 'cn' | 'arabic';
   raw: string;
+  /** 区间章号（第1045~1046章）时为区间末端；普通章号与 value 相同解析不出时不存在 */
+  end?: number;
 }
 
 /** 解析「第 X 章」里的中文或阿拉伯数字；不是章号标题时返回 null */
@@ -110,7 +115,20 @@ export function parseChapterNumber(title: string): ParsedChapterNumber | null {
   const raw = match[2];
   const value = /^\d+$/.test(raw) ? Number(raw) : parseChineseNumber(raw);
   if (value === null || !Number.isFinite(value)) return null;
-  return { value, style: /^\d+$/.test(raw) ? 'arabic' : 'cn', raw };
+  const result: ParsedChapterNumber = {
+    value,
+    style: /^\d+$/.test(raw) ? 'arabic' : 'cn',
+    raw,
+  };
+  const range = /([~～\-—－至到])\s*([^\s]{1,8})\s*[章节回话]/.exec(match[3]);
+  if (range) {
+    const similar = /^\d+$/.test(range[2]) ? 'arabic' : result.style === 'arabic' ? 'arabic' : 'cn';
+    const end = /^\d+$/.test(range[2]) ? Number(range[2]) : parseChineseNumber(range[2]);
+    if (end !== null && Number.isFinite(end) && end >= value && similar === result.style) {
+      result.end = end;
+    }
+  }
+  return result;
 }
 
 /** 「一百零五」→ 105，「十二」→ 12 */
@@ -269,22 +287,30 @@ export function auditChapters(chapters: Chapter[]): AuditReport {
     }
 
     const values = [...firstByValue.keys()].sort((a, b) => a - b);
-    for (let i = 1; i < values.length; i += 1) {
-      const previous = values[i - 1];
-      const current = values[i];
-      if (current <= previous + 1) continue;
-      const entry = firstByValue.get(current);
+    // 记录上一个章号（含区间）覆盖到哪里，区间标题（第1045~1046章）不算缺号；
+    // 首章之前的「缺号」不报（很多书以第 2 章起步，前面是序章）
+    let previousEnd: number | null = null;
+    for (const start of values) {
+      const entry = firstByValue.get(start);
       if (!entry) continue;
-      const gap = current - previous - 1;
-      const shown: number[] = [];
-      for (let n = previous + 1; n < current && shown.length < 6; n += 1) shown.push(n);
-      const missing = shown.join('、');
-      add(
-        'missing-number',
-        entry.chapter,
-        entry.chapterIndex,
-        `${hint}章号不连续：缺少第 ${missing} 章${gap > shown.length ? ` 等 ${gap} 个章号` : ''}`,
-      );
+      const spanEnd = entry.parsed.end ?? entry.parsed.value;
+      if (previousEnd === null) {
+        previousEnd = spanEnd;
+        continue;
+      }
+      if (start > previousEnd + 1) {
+        const gap = start - previousEnd - 1;
+        const shown: number[] = [];
+        for (let n = previousEnd + 1; n < start && shown.length < 6; n += 1) shown.push(n);
+        const missing = shown.join('、');
+        add(
+          'missing-number',
+          entry.chapter,
+          entry.chapterIndex,
+          `${hint}章号不连续：缺少第 ${missing} 章${gap > shown.length ? ` 等 ${gap} 个章号` : ''}`,
+        );
+      }
+      previousEnd = Math.max(previousEnd, spanEnd);
     }
   }
 
@@ -401,6 +427,8 @@ export function renumberChapters(chapters: Chapter[]): RenumberResult {
   for (const segment of segments) {
     let local = 0;
     for (const entry of segment.entries) {
+      // 区间标题（第1045~1046章）代表一段合并章，重编号数字有歧义，跳过不参与
+      if (entry.parsed.end !== undefined && entry.parsed.end > entry.parsed.value) continue;
       global += 1;
       local += 1;
       const to = restartPerVolume ? local : global;
