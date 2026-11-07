@@ -16,12 +16,12 @@ export const DEFAULT_LAYOUT: LayoutOptions = {
   coverOptions: DEFAULT_COVER_OPTIONS,
 };
 
-const LAYOUT_KEY = 'txt2book.layout.v1';
-const EPUB_VERSION_KEY = 'txt2book.epubVersion';
-const EXPORT_FORMAT_KEY = 'txt2book.exportFormat';
-const LIST_PAGE_SIZE_KEY = 'txt2book.listPageSize';
-const THEME_KEY = 'txt2book.theme';
-const LAST_BOOK_KEY = 'txt2book.lastBook.v1';
+const LAYOUT_KEY = 'bookloom.layout.v1';
+const EPUB_VERSION_KEY = 'bookloom.epubVersion';
+const EXPORT_FORMAT_KEY = 'bookloom.exportFormat';
+const LIST_PAGE_SIZE_KEY = 'bookloom.listPageSize';
+const THEME_KEY = 'bookloom.theme';
+const LAST_BOOK_KEY = 'bookloom.lastBook.v1';
 
 export type ThemeMode = 'light' | 'dark';
 export type MobileView = 'chapters' | 'preview';

@@ -9,7 +9,7 @@ const html = `<!doctype html>
         <div style="width:54px;height:54px;border-radius:14px;background:#2f2a22;color:#f6efe0;display:flex;align-items:center;justify-content:center">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.6C10.4 5.3 8.2 4.7 5.5 4.7c-.8 0-1.5.07-2 .2v13.9c.5-.13 1.2-.2 2-.2 2.7 0 4.9.6 6.5 1.9 1.6-1.3 3.8-1.9 6.5-1.9.8 0 1.5.07 2 .2V4.9c-.5-.13-1.2-.2-2-.2-2.7 0-4.9.6-6.5 1.9Z"/><path d="M12 6.6v14"/></svg>
         </div>
-        <div style="font-size:27px;font-weight:700;color:#2c2720;letter-spacing:.02em">txt2book</div>
+        <div style="font-size:27px;font-weight:700;color:#2c2720;letter-spacing:.02em">BookLoom</div>
       </div>
       <div style="font-family:'Songti SC','Noto Serif CJK SC',serif;font-size:70px;line-height:1.16;color:#2c2720;font-weight:700">把 TXT 变成<br/>好读的 EPUB</div>
       <div style="margin-top:30px;font-size:23px;color:#8a7f6c">自动识别编码与章节 · 人工校对 · EPUB 3 / 2</div>
@@ -24,7 +24,7 @@ const html = `<!doctype html>
 </body></html>`;
 
 const browser = await puppeteer.launch({
-  executablePath: '/usr/bin/google-chrome',
+  executablePath: process.env.CHROME_PATH ?? '/usr/bin/google-chrome',
   headless: 'new',
   args: ['--no-sandbox', '--disable-dev-shm-usage'],
 });

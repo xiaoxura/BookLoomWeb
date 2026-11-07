@@ -1,4 +1,4 @@
-# txt2book 开发计划
+# BookLoom 开发计划
 
 | 项 | 值 |
 | --- | --- |
@@ -11,7 +11,7 @@
 
 ## 1. 背景与现状
 
-txt2book 目前已经打通「导入 → 识别 → 校对 → 排版 → 导出」的主干：
+BookLoom 目前已经打通「导入 → 识别 → 校对 → 排版 → 导出」的主干：
 
 - TXT / EPUB 双向导入，EPUB 保留卷章层级与封面
 - 章节识别（标题形态 + 密度）、漏章诊断、人工校对
@@ -276,7 +276,7 @@ M3 已全部实现，随 v0.1.0 发布：
 
 - **草稿 schema**：M2 起新草稿写 `version: 3`（增加 `bookId`）；读取兼容 v1 / v2，旧记录由 `ensureMigrated()` 原子迁移。迁移失败保留旧数据并提示。
 - **LayoutOptions**：继续用可选字段扩展（已有 `separateChapterNumber`、`customCss`、`coverStyle`），旧草稿缺字段时取默认值。
-- **localStorage 键**：`txt2book.layout.v1`、`txt2book.epubVersion`、`txt2book.exportFormat`、`txt2book.theme`、`txt2book.noticeSeen`、`txt2book.lastBook.v1`；新增键统一加前缀并写读取兜底。
+- **localStorage 键**：`bookloom.layout.v1`、`bookloom.epubVersion`、`bookloom.exportFormat`、`bookloom.theme`、`bookloom.noticeSeen`、`bookloom.lastBook.v1`；新增键统一加前缀并写读取兜底。
 - **版本发布**：`npm version` 更新版本号，README 同步功能说明；版本与构建时间由构建脚本注入页面 JSON-LD（站点已不再维护独立更新日志页）。
 
 ## 6. 测试策略

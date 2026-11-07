@@ -47,7 +47,7 @@ function makeSource(id: string): SourceRecord {
 
 function rawGet(key: string): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open('txt2book', 2);
+    const open = indexedDB.open('bookloom', 2);
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
       const db = open.result;

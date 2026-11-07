@@ -29,7 +29,7 @@ function legacyDraft(overrides: Partial<DraftData> = {}): DraftData {
 
 function deleteDatabase(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.deleteDatabase('txt2book');
+    const request = indexedDB.deleteDatabase('bookloom');
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
@@ -37,7 +37,7 @@ function deleteDatabase(): Promise<void> {
 
 function seedLegacy(draft: unknown, source: unknown | null, font: unknown | null): Promise<void> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open('txt2book', 1);
+    const open = indexedDB.open('bookloom', 1);
     open.onupgradeneeded = () => {
       open.result.createObjectStore('drafts');
     };
@@ -60,7 +60,7 @@ function seedLegacy(draft: unknown, source: unknown | null, font: unknown | null
 
 function readLegacyKeys(): Promise<{ current: unknown; source: unknown; font: unknown }> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open('txt2book', 2);
+    const open = indexedDB.open('bookloom', 2);
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
       const db = open.result;

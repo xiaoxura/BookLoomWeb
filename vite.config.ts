@@ -31,7 +31,7 @@ const BUILT_AT = new Date().toISOString();
 
 function appMetaPlugin(): Plugin {
   return {
-    name: 'txt2book-app-meta',
+    name: 'bookloom-app-meta',
     transformIndexHtml(html) {
       return html
         .replaceAll('%APP_VERSION%', APP_VERSION)

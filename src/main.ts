@@ -609,8 +609,8 @@ function revealChapter(id: string): void {
 /** 第一次进工作区时提示一次行内操作，之后不再打扰 */
 function maybeShowRowHint(): void {
   try {
-    if (localStorage.getItem('txt2book.rowHintSeen') === '1') return;
-    localStorage.setItem('txt2book.rowHintSeen', '1');
+    if (localStorage.getItem('bookloom.rowHintSeen') === '1') return;
+    localStorage.setItem('bookloom.rowHintSeen', '1');
   } catch {
     return;
   }

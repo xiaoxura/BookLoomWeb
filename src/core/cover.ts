@@ -233,7 +233,7 @@ function paintVertical(
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = colors.muted;
-  ctx.fillText('txt2book', 240, HEIGHT - 150);
+  ctx.fillText('BookLoom', 240, HEIGHT - 150);
 }
 
 function paintBlock(
@@ -291,7 +291,7 @@ function paintBlock(
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = colors.onBlockMuted;
-  ctx.fillText('txt2book', 232, HEIGHT - 150);
+  ctx.fillText('BookLoom', 232, HEIGHT - 150);
 }
 
 function createCoverCanvas(

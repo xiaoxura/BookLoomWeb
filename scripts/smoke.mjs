@@ -13,8 +13,8 @@ const OUT = path.resolve('samples');
 // Linux CI 用 /tmp；Windows 上 Chrome 无法写入 "/tmp"，换成系统临时目录
 const DOWNLOADS =
   process.platform === 'win32'
-    ? path.join(os.tmpdir(), 'txt2book-downloads')
-    : '/tmp/txt2book-downloads';
+    ? path.join(os.tmpdir(), 'bookloom-downloads')
+    : '/tmp/bookloom-downloads';
 
 fs.rmSync(DOWNLOADS, { recursive: true, force: true });
 fs.mkdirSync(DOWNLOADS, { recursive: true });
@@ -88,7 +88,7 @@ async function readSessionIds(page) {
   return page.evaluate(async () => {
     const open = () =>
       new Promise((resolve, reject) => {
-        const request = indexedDB.open('txt2book');
+        const request = indexedDB.open('bookloom');
         request.onerror = () => reject(request.error);
         request.onsuccess = () => resolve(request.result);
       });
@@ -134,7 +134,7 @@ async function resetLibrary(page) {
   await page.evaluate(
     () =>
       new Promise((resolve) => {
-        const request = indexedDB.deleteDatabase('txt2book');
+        const request = indexedDB.deleteDatabase('bookloom');
         request.onsuccess = () => resolve();
         request.onerror = () => resolve();
         request.onblocked = () => resolve();
@@ -154,7 +154,7 @@ try {
   await page.setViewport({ width: 1440, height: 920, deviceScaleFactor: 1 });
   // 主流程先跳过更新公告弹窗，公告本身在最后单独用干净上下文验证
   await page.evaluateOnNewDocument(() => {
-    localStorage.setItem('txt2book.noticeSeen', 'welcome-2026-11');
+    localStorage.setItem('bookloom.noticeSeen', 'welcome-2026-11');
   });
 
   const errors = [];
@@ -840,7 +840,7 @@ try {
   await page.evaluate(() => {
     const prototype = IDBObjectStore.prototype;
     const original = prototype.put;
-    window.__txt2bookOriginalPut = original;
+    window.__bookloomOriginalPut = original;
     prototype.put = function (value, key) {
       if (typeof key === 'string' && key.startsWith('source:')) throw new DOMException('模拟原文保存失败', 'QuotaExceededError');
       return original.call(this, value, key);
@@ -878,8 +878,8 @@ try {
   }
 
   await page.evaluate(() => {
-    IDBObjectStore.prototype.put = window.__txt2bookOriginalPut;
-    delete window.__txt2bookOriginalPut;
+    IDBObjectStore.prototype.put = window.__bookloomOriginalPut;
+    delete window.__bookloomOriginalPut;
   });
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#workspace:not([hidden])', { timeout: 15000 });
@@ -1111,7 +1111,7 @@ try {
   const crashPage = await crashContext.newPage();
   await crashPage.setViewport({ width: 1200, height: 900, deviceScaleFactor: 1 });
   await crashPage.evaluateOnNewDocument(() => {
-    localStorage.setItem('txt2book.noticeSeen', 'welcome-2026-11');
+    localStorage.setItem('bookloom.noticeSeen', 'welcome-2026-11');
   });
   const crashClient = await crashPage.createCDPSession();
   await crashClient.send('Page.setDownloadBehavior', {
@@ -1151,7 +1151,7 @@ try {
   const mobile = await browser.newPage();
   await mobile.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await mobile.evaluateOnNewDocument(() => {
-    localStorage.setItem('txt2book.noticeSeen', 'welcome-2026-11');
+    localStorage.setItem('bookloom.noticeSeen', 'welcome-2026-11');
   });
   await mobile.goto(BASE, { waitUntil: 'networkidle0' });
   await mobile.click('#load-sample');
@@ -1188,7 +1188,7 @@ try {
   const tablet = await browser.newPage();
   await tablet.setViewport({ width: 1024, height: 900, deviceScaleFactor: 1 });
   await tablet.evaluateOnNewDocument(() => {
-    localStorage.setItem('txt2book.noticeSeen', 'welcome-2026-11');
+    localStorage.setItem('bookloom.noticeSeen', 'welcome-2026-11');
   });
   await tablet.goto(BASE, { waitUntil: 'networkidle0' });
   // 前面的页面可能留下草稿，恢复后工作区会直接出现
@@ -1209,14 +1209,14 @@ try {
   const migrationPage = await migrationContext.newPage();
   await migrationPage.setViewport({ width: 1200, height: 900, deviceScaleFactor: 1 });
   await migrationPage.evaluateOnNewDocument(() => {
-    localStorage.setItem('txt2book.noticeSeen', 'welcome-2026-11');
+    localStorage.setItem('bookloom.noticeSeen', 'welcome-2026-11');
   });
   // 先在同源的静态页（不运行应用脚本）里预置 v1 数据库，再打开首页触发迁移
   await migrationPage.goto(`${BASE}robots.txt`, { waitUntil: 'networkidle0' });
   await migrationPage.evaluate(
     () =>
       new Promise((resolve, reject) => {
-        const open = indexedDB.open('txt2book', 1);
+        const open = indexedDB.open('bookloom', 1);
         open.onupgradeneeded = () => open.result.createObjectStore('drafts');
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
@@ -1282,7 +1282,7 @@ try {
   const degradedPage = await degradedContext.newPage();
   await degradedPage.setViewport({ width: 1200, height: 900, deviceScaleFactor: 1 });
   await degradedPage.evaluateOnNewDocument(() => {
-    localStorage.setItem('txt2book.noticeSeen', 'welcome-2026-11');
+    localStorage.setItem('bookloom.noticeSeen', 'welcome-2026-11');
     try {
       Object.defineProperty(window, 'indexedDB', { value: undefined, configurable: true });
     } catch {

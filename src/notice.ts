@@ -5,7 +5,7 @@
 
 import { beginModal } from './app/modal';
 
-const NOTICE_KEY = 'txt2book.noticeSeen';
+const NOTICE_KEY = 'bookloom.noticeSeen';
 
 interface NoticeItem {
   lead: string;

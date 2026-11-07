@@ -1,7 +1,7 @@
 import type { BookMeta, Chapter, ConvertMode, CoverData, FontData, LayoutOptions, ParseResult } from '../types';
 import type { RuleSpec } from './rules';
 
-const DB_NAME = 'txt2book';
+const DB_NAME = 'bookloom';
 const DB_VERSION = 2;
 const DRAFT_STORE = 'drafts';
 const BOOKS_STORE = 'books';

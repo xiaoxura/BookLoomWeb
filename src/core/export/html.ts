@@ -108,7 +108,7 @@ export function buildHtml(input: HtmlInput): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="generator" content="txt2book">
+<meta name="generator" content="BookLoom">
 <title>${escapeXml(title)}</title>
 <style>
 ${styles(layout)}
@@ -120,7 +120,7 @@ ${styles(layout)}
 <main>
 ${body}
 </main>
-<footer class="book">由 txt2book 生成</footer>
+<footer class="book">由 BookLoom 生成</footer>
 </body>
 </html>
 `;

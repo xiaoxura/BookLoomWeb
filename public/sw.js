@@ -1,4 +1,4 @@
-const CACHE = 'txt2book-v1';
+const CACHE = 'bookloom-v1';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

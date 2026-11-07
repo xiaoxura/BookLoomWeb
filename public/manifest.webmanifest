@@ -1,6 +1,6 @@
 {
-  "name": "txt2book — TXT / EPUB / DOCX 导入与互转",
-  "short_name": "txt2book",
+  "name": "BookLoom — TXT / EPUB / DOCX 导入与互转",
+  "short_name": "BookLoom",
   "description": "纯浏览器本地运行的电子书转换工具：TXT / EPUB / DOCX 导入与互转，文件不出设备。",
   "lang": "zh-CN",
   "start_url": "/",
