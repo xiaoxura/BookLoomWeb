@@ -106,6 +106,12 @@ body {
   height: 100%;
 }
 
+/* html 一并禁滚：有些浏览器在 overscroll 之后会留下残余滚动量，导致 sticky 顶栏错位 */
+html {
+  overflow: hidden;
+  height: 100%;
+}
+
 body {
   display: flex;
   flex-direction: column;
@@ -2989,6 +2995,21 @@ body:has(#shelf:not([hidden])) #settings-btn {
   /* 手机端不摆右栏：设置走顶栏齿轮，导出走同样的弹窗 */
   .settings-rail {
     display: none;
+  }
+
+  /* 手机端顶栏改为固定定位：彻底摆脱滚动/overscroll 残留，永远贴在顶端 */
+  .topbar {
+    position: fixed;
+    top: 6px;
+    left: clamp(16px, 3vw, 32px);
+    right: clamp(16px, 3vw, 32px);
+    margin-top: 0;
+    z-index: 20;
+  }
+
+  /* main 给 fixed 顶栏让位（顶栏 48 + 上浮 6 + 间距 10）；落地页/书架/批量页同样适用 */
+  main {
+    padding-top: 64px;
   }
 
   main:has(> #workspace:not([hidden])) {

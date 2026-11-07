@@ -132,6 +132,10 @@ function setMobileView(view: MobileView, scroll = false): void {
   els.mobileTabs.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((button) => {
     button.setAttribute('aria-pressed', String(button.dataset.view === view));
   });
+  // 切换视图时把外部滚动容器归零：否则上一视图残留的滚动量会把切换页顶进顶栏下面
+  window.scrollTo(0, 0);
+  const mainEl = document.querySelector('main');
+  if (mainEl) mainEl.scrollTop = 0;
   syncHash();
   if (!scroll) return;
   requestAnimationFrame(() => {
