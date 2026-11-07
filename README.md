@@ -104,7 +104,7 @@ npm run smoke            # 真实 Chrome 端到端（含批量、草稿、EPUB 2
 
 ## SEO / GEO
 
-站点固定使用 `https://txt2book.xiaoxura.com/` 作为 canonical 域名。迁移域名时要同步修改：
+站点固定使用 `https://bookloom.xiaoxura.com/` 作为 canonical 域名。迁移域名时要同步修改：
 
 - `index.html`：`canonical`、`og:url`、`og:image` 与 JSON-LD 里的绝对地址
 - `public/robots.txt`、`public/sitemap.xml`、`public/llms.txt`

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { XMLParser } from 'fast-xml-parser';
 import { describe, expect, it } from 'vitest';
 
-const SITE = 'https://txt2book.xiaoxura.com';
+const SITE = 'https://bookloom.xiaoxura.com';
 
 const html = readFileSync('index.html', 'utf8');
 const robots = readFileSync('public/robots.txt', 'utf8');

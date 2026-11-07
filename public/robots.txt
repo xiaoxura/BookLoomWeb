@@ -1,4 +1,4 @@
-# txt2book：允许搜索引擎与 AI 助手抓取公开页面
+# BookLoom：允许搜索引擎与 AI 助手抓取公开页面
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 
 User-agent: *
@@ -50,4 +50,4 @@ Allow: /
 User-agent: cohere-ai
 Allow: /
 
-Sitemap: https://txt2book.xiaoxura.com/sitemap.xml
+Sitemap: https://bookloom.xiaoxura.com/sitemap.xml
