@@ -132,6 +132,7 @@ function setMobileView(view: MobileView, scroll = false): void {
   els.mobileTabs.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((button) => {
     button.setAttribute('aria-pressed', String(button.dataset.view === view));
   });
+  syncHash();
   if (!scroll) return;
   requestAnimationFrame(() => {
     els.workspace.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -433,6 +434,7 @@ function showWorkspace() {
   hideNoticeBanner();
   // 校对章节是导入后的主任务，手机上先给目录，预览随时可切
   setMobileView('chapters');
+  syncHash();
 }
 
 /** 落地页的导入失败信息：写在常驻错误块里，不会随 toast 消失 */
@@ -458,6 +460,7 @@ function showLanding() {
   els.privacy.hidden = false;
   els.batch.hidden = true;
   window.scrollTo(0, 0);
+  syncHash();
 }
 
 function setActive(id: string | null) {
@@ -1812,6 +1815,7 @@ function startBatch(files: File[]) {
   render.batch();
   void runBatch();
   window.scrollTo(0, 0);
+  syncHash();
 }
 
 
@@ -2444,6 +2448,9 @@ async function openBook(bookId: string, options: { silent?: boolean } = {}): Pro
 }
 
 async function restoreLastBookOnStart(): Promise<string | null> {
+  // 地址栏里带了页面位置（#/bookshelf、#book/<id>…）就先按链接走，链接比“恢复上次”优先
+  if (await applyHash(location.hash)) return null;
+
   let books: BookRecord[] = [];
   try {
     books = await listBooks();
@@ -2511,6 +2518,7 @@ async function showShelf(): Promise<void> {
   els.privacy.hidden = true;
   els.batch.hidden = true;
   window.scrollTo(0, 0);
+  syncHash();
 }
 
 function closeShelf(): void {
@@ -2521,6 +2529,61 @@ function closeShelf(): void {
 function toggleShelf(): void {
   if (els.shelf.hidden) void showShelf();
   else closeShelf();
+}
+
+/* ---------------- 极简 hash 路由：地址栏记住页面位置 ----------------
+ * #/            落地页
+ * #/bookshelf   书架
+ * #/batch       批量转换
+ * #book/<id>            工作区（具体某本书）
+ * #book/<id>/preview    工作区 + 移动端预览视图
+ * 用 replaceState 写入，不会把每一步操作都塞进历史记录；刷新 / 分享链接都能回到原页面。
+ */
+
+let hashSyncing = false;
+
+function currentHash(): string {
+  if (!els.shelf.hidden) return '#/bookshelf';
+  if (!els.batch.hidden) return '#/batch';
+  if (!els.workspace.hidden) {
+    const base = state.bookId ? `#book/${state.bookId}` : '#draft';
+    return isMobileViewport() && mobileView === 'preview' ? `${base}/preview` : base;
+  }
+  return '';
+}
+
+function syncHash(): void {
+  if (hashSyncing) return;
+  const next = currentHash();
+  if (location.hash === next) return;
+  window.history.replaceState(null, '', next || location.pathname + location.search);
+}
+
+/** 解析并跳到 hash 描述的页面；无法还原时交给默认流程 */
+async function applyHash(hash: string): Promise<boolean> {
+  const match = hash.match(/^#(\/)?(bookshelf|batch|book(?:\/([A-Za-z0-9_-]+)(?:\/preview)?)?|draft)$/);
+  if (!match) return false;
+  const [, , page, bookId] = match;
+  if (page === 'bookshelf') {
+    await showShelf();
+    return true;
+  }
+  if (page === 'batch') return true; // 批量页依赖上传行为，链接直达没有上下文时忽略
+  if (page?.startsWith('book')) {
+    if (bookId && bookId !== state.bookId) {
+      const opened = await openBook(bookId, { silent: true });
+      if (!opened) return false;
+    } else {
+      showWorkspace();
+    }
+    if (match[0].endsWith('/preview') && state.parsed) setMobileView('preview', false);
+    return true;
+  }
+  if (page === 'draft' && state.parsed) {
+    showWorkspace();
+    return true;
+  }
+  return false;
 }
 
 async function openShelfBook(bookId: string): Promise<void> {
@@ -2534,7 +2597,9 @@ async function openShelfBook(bookId: string): Promise<void> {
   }
   cancelScheduledDraftSave();
   await saveDraftNow();
-  if (await openBook(bookId)) window.scrollTo(0, 0);
+  if (await openBook(bookId)) {
+    window.scrollTo(0, 0);
+  }
 }
 
 async function renameShelfBook(bookId: string, title: string): Promise<void> {
@@ -2834,6 +2899,13 @@ void purgeExpiredDeletedBooks().catch(() => undefined);
 
 void restoreLastBookOnStart().then((title) => {
   if (title) toast(`已恢复上次编辑的《${title}》`);
+});
+
+// 手动改地址栏 / 浏览器前进后退：按 hash 跳页；不认识的 hash 还原成当前页面
+window.addEventListener('hashchange', () => {
+  void applyHash(location.hash).then((matched) => {
+    if (!matched) syncHash();
+  });
 });
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

@@ -2984,8 +2984,6 @@ body:has(#shelf:not([hidden])) #settings-btn {
     grid-template-rows: auto minmax(0, 1fr);
     gap: 8px;
     min-height: 0;
-    /* 只需给 sticky 顶栏让位（约 52px） */
-    scroll-margin-top: 60px;
   }
 
   /* 手机端不摆右栏：设置走顶栏齿轮，导出走同样的弹窗 */
@@ -3019,11 +3017,13 @@ body:has(#shelf:not([hidden])) #settings-btn {
   }
 
   .mobile-tabs {
-    /* 常规流内排版：不悬浮、不盖面板内容；页内滚动时自然收起 */
+    /* 吸顶：滚动容器是 main（顶栏在 main 外面），贴 main 顶端=贴顶栏下沿 */
+    position: sticky;
+    top: 0;
+    z-index: 18;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px;
-    margin-top: 2px;
     padding: 4px;
     border: 1px solid var(--line);
     border-radius: 12px;
