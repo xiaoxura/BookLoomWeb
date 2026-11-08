@@ -13,4 +13,7 @@ samples/*.epub
 samples/*.jpg
 samples/*.webp
 samples/debug-*.png
+samples/local-verify/
+scripts/debug-*.mjs
+pnpm-lock.yaml
 .ci-check

@@ -1,3 +1,7 @@
+// 内嵌开源字体（SIL OFL）：思源黑体（界面）+ 思源宋体（正文），
+// 按 unicode-range 分片，浏览器只下载页面实际用到的字形分片
+import '@fontsource-variable/noto-sans-sc';
+import '@fontsource-variable/noto-serif-sc';
 import { extractIntroMeta, findHeadingCandidates, guessTitle } from './core/chapters';
 import {
   DEFAULT_COVER_OPTIONS,

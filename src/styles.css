@@ -1,5 +1,9 @@
 :root {
   color-scheme: light;
+  /* 内嵌思源字体（见 src/main.ts 的 @fontsource-variable 引入），
+     保证 Windows / Linux / macOS 下界面与正文字重一致 */
+  --font-ui: 'Noto Sans SC Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-serif: 'Noto Serif SC Variable', 'Songti SC', 'Noto Serif CJK SC', 'SimSun', serif;
   --bg: #f4efe4;
   --bg-glow: #fbf7ee;
   --panel: #fffdf8;
@@ -123,8 +127,7 @@ body {
     radial-gradient(1200px 600px at 50% -10%, var(--bg-glow), transparent 70%),
     var(--bg);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', sans-serif;
+  font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -365,7 +368,7 @@ main > section {
 
 .guide-head h2,
 .privacy h2 {
-  font-family: 'Songti SC', 'Noto Serif CJK SC', serif;
+  font-family: var(--font-serif);
   font-size: 20px;
   letter-spacing: 0.02em;
 }
@@ -744,7 +747,7 @@ main:has(> #batch:not([hidden])) > #batch .batch-list {
 
 .drop-inner h1,
 .drop-inner h2 {
-  font-family: 'Songti SC', 'Noto Serif CJK SC', serif;
+  font-family: var(--font-serif);
   font-size: clamp(26px, 4vw, 34px);
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -1565,7 +1568,7 @@ button:disabled {
 }
 
 .preview {
-  --p-font: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', serif;
+  --p-font: var(--font-serif);
   --p-lh: 1.75;
   --p-gap: 0em;
   --p-indent: 2em;

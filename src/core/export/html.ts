@@ -8,8 +8,8 @@ export interface HtmlInput {
 }
 
 const FONT_STACK: Record<LayoutOptions['font'], string> = {
-  serif: `"Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif`,
-  sans: `"PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif`,
+  serif: `"Noto Serif SC", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif`,
+  sans: `"Noto Sans SC", "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif`,
   kai: `"Kaiti SC", "KaiTi", "STKaiti", "Noto Serif CJK SC", serif`,
 };
 

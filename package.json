@@ -13,6 +13,8 @@
     "validate": "node scripts/validate-epub.mjs samples/demo.epub"
   },
   "dependencies": {
+    "@fontsource-variable/noto-sans-sc": "^5.3.1",
+    "@fontsource-variable/noto-serif-sc": "^5.3.1",
     "fast-xml-parser": "^5.11.2",
     "fflate": "^0.8.3",
     "opencc-js": "^1.4.2"
